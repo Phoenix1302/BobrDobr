@@ -25,5 +25,5 @@ Thumbs.db
 .idea/
 
 # Local deployment scripts containing secrets
-scripts/git_sync.ps1
-scripts/install_git.ps1
+scripts/*.ps1
+
