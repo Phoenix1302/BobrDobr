@@ -23,11 +23,12 @@ from gui.styles import DARK_THEME_QSS, get_stylesheet
 from gui.profile_card import VPNProfileCard
 from gui.profile_dialog import ProfileDialog, PasswordPromptDialog
 from gui.log_viewer import LogViewer
-from gui.installer_dialog import InstallDialog, UninstallDialog, UpdateDialog
+from gui.installer_dialog import InstallDialog, UninstallDialog, UpdateDialog, GitHubUpdateDialog
 from utils.platform_helper import is_windows, is_admin, get_base_dir, ensure_persistent_binaries, init_windows_job_object
 from utils.installer_helper import is_installed_mode, has_installed_version
-from utils.version import APP_VERSION, APP_TITLE
+from utils.version import APP_VERSION, APP_TITLE, GITHUB_REPO, GITHUB_RELEASES_URL
 from utils.config_store import settings
+from utils.github_updater import GitHubUpdateCheckerThread
 
 
 class MainWindow(QMainWindow):
@@ -91,6 +92,11 @@ class MainWindow(QMainWindow):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._update_timer_label)
 
+        # Автоматическая фоновая проверка обновлений на GitHub (через 3.5 секунды)
+        self._update_checker_thread: Optional[GitHubUpdateCheckerThread] = None
+        self._latest_update_info: Optional[dict] = None
+        QTimer.singleShot(3500, self._start_silent_update_check)
+
         self._init_ui()
         self._wire_signals()
         self._render_profiles()
@@ -149,6 +155,15 @@ class MainWindow(QMainWindow):
         self.action_tray_disconnect = self.tray_menu.addAction("🔌  Отключить VPN")
         self.action_tray_disconnect.setEnabled(False)
         self.action_tray_disconnect.triggered.connect(self._tray_disconnect_vpn)
+
+        self.tray_menu.addSeparator()
+
+        self.action_tray_update = self.tray_menu.addAction("🚀  Доступна новая версия!")
+        self.action_tray_update.setVisible(False)
+        self.action_tray_update.triggered.connect(self._on_update_available_clicked)
+
+        self.action_tray_check_updates = self.tray_menu.addAction("🔄  Проверить обновления...")
+        self.action_tray_check_updates.triggered.connect(self._check_updates_interactive)
 
         self.tray_menu.addSeparator()
 
@@ -375,13 +390,38 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("font-size: 22px; font-weight: 800; color: #d97706; letter-spacing: -0.5px;")
         title_row.addWidget(title_label)
 
-        ver_badge = QLabel(f"v{APP_VERSION}")
-        ver_badge.setStyleSheet(
+        self.ver_badge = QLabel(f"v{APP_VERSION}")
+        self.ver_badge.setStyleSheet(
             "color: #94a3b8; font-size: 11px; font-weight: 700; "
             "background-color: #1a252a; border: 1px solid #283941; "
             "border-radius: 6px; padding: 2px 7px;"
         )
-        title_row.addWidget(ver_badge)
+        self.ver_badge.setCursor(Qt.PointingHandCursor)
+        self.ver_badge.setToolTip("Нажмите, чтобы проверить обновления на GitHub")
+        self.ver_badge.mousePressEvent = lambda e: self._check_updates_interactive()
+        title_row.addWidget(self.ver_badge)
+
+        self.btn_update_available = QPushButton("🚀 Обновление")
+        self.btn_update_available.setCursor(Qt.PointingHandCursor)
+        self.btn_update_available.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #d97706, stop:1 #b45309);
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: 800;
+                border: 1px solid #f59e0b;
+                border-radius: 6px;
+                padding: 2px 9px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #d97706);
+            }
+        """)
+        self.btn_update_available.setToolTip("Нажмите для просмотра релиза и загрузки новой версии")
+        self.btn_update_available.clicked.connect(self._on_update_available_clicked)
+        self.btn_update_available.setVisible(False)
+        title_row.addWidget(self.btn_update_available)
+
         brand_text_layout.addLayout(title_row)
 
         subtitle_label = QLabel("Центр гидробиологических инноваций | Сетевая плотина")
@@ -529,10 +569,35 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(bottom_frame)
 
         # Футер
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+        footer_layout.setAlignment(Qt.AlignCenter)
+        footer_layout.setSpacing(10)
+
         footer_label = QLabel(f"© 2026 БобрДобр v{APP_VERSION} | Все бобры накормлены. Протечки устранены.")
-        footer_label.setAlignment(Qt.AlignCenter)
-        footer_label.setStyleSheet("color: #475569; font-size: 11px; margin-top: 4px; font-weight: 500;")
-        main_layout.addWidget(footer_label)
+        footer_label.setStyleSheet("color: #475569; font-size: 11px; font-weight: 500;")
+        footer_layout.addWidget(footer_label)
+
+        btn_check_upd = QPushButton("Проверить обновления")
+        btn_check_upd.setCursor(Qt.PointingHandCursor)
+        btn_check_upd.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                color: #64748b;
+                font-size: 11px;
+                text-decoration: underline;
+                font-weight: 600;
+                padding: 0px 4px;
+            }
+            QPushButton:hover {
+                color: #f59e0b;
+            }
+        """)
+        btn_check_upd.clicked.connect(self._check_updates_interactive)
+        footer_layout.addWidget(btn_check_upd)
+
+        main_layout.addLayout(footer_layout)
 
     def _render_profiles(self):
         """Очищает и заново отображает все карточки из settings.json в одной колонке."""
@@ -992,6 +1057,83 @@ class MainWindow(QMainWindow):
                 self.tray_icon.hide()
             event.accept()
             QApplication.instance().quit()
+
+    # ==========================================
+    # GitHub Updates
+    # ==========================================
+    def _start_silent_update_check(self):
+        """Starts background silent check for updates on GitHub."""
+        if self._update_checker_thread and self._update_checker_thread.isRunning():
+            return
+        self._update_checker_thread = GitHubUpdateCheckerThread(
+            repo=GITHUB_REPO, current_version=APP_VERSION, timeout=6, parent=self
+        )
+        self._update_checker_thread.result_ready.connect(self._on_silent_update_result)
+        self._update_checker_thread.start()
+
+    def _on_silent_update_result(self, res: dict):
+        """Handles background silent update check result."""
+        if res.get("update_available"):
+            self._latest_update_info = res
+            new_ver = res.get("latest_version", "")
+            self.btn_update_available.setText(f"🚀 Доступно v{new_ver}")
+            self.btn_update_available.setVisible(True)
+            if hasattr(self, "action_tray_update"):
+                self.action_tray_update.setText(f"🚀  Доступна новая версия v{new_ver}!")
+                self.action_tray_update.setVisible(True)
+
+    def _on_update_available_clicked(self):
+        """Opens GitHubUpdateDialog when user clicks the update banner or tray action."""
+        if self._latest_update_info and self._latest_update_info.get("update_available"):
+            dlg = GitHubUpdateDialog(self, self._latest_update_info, self.app_icon)
+            dlg.exec()
+        else:
+            self._check_updates_interactive()
+
+    def _check_updates_interactive(self):
+        """User-triggered interactive check for updates."""
+        if self._update_checker_thread and self._update_checker_thread.isRunning():
+            return
+
+        if hasattr(self, "ver_badge"):
+            self.ver_badge.setText("⏳ Проверка...")
+
+        self._update_checker_thread = GitHubUpdateCheckerThread(
+            repo=GITHUB_REPO, current_version=APP_VERSION, timeout=8, parent=self
+        )
+        self._update_checker_thread.result_ready.connect(self._on_interactive_update_result)
+        self._update_checker_thread.start()
+
+    def _on_interactive_update_result(self, res: dict):
+        """Handles result of user-initiated update check."""
+        if hasattr(self, "ver_badge"):
+            self.ver_badge.setText(f"v{APP_VERSION}")
+
+        if res.get("update_available"):
+            self._latest_update_info = res
+            new_ver = res.get("latest_version", "")
+            self.btn_update_available.setText(f"🚀 Доступно v{new_ver}")
+            self.btn_update_available.setVisible(True)
+            if hasattr(self, "action_tray_update"):
+                self.action_tray_update.setText(f"🚀  Доступна новая версия v{new_ver}!")
+                self.action_tray_update.setVisible(True)
+
+            dlg = GitHubUpdateDialog(self, res, self.app_icon)
+            dlg.exec()
+        elif res.get("error"):
+            QMessageBox.warning(
+                self,
+                "Проверка обновлений",
+                f"Не удалось связаться с сервером GitHub для проверки обновлений:\n\n{res['error']}\n\n"
+                "Пожалуйста, проверьте подключение к интернету."
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Обновлений не требуется",
+                f"У вас установлена самая актуальная версия БобрДобр (v{APP_VERSION}).\n\n"
+                "Сетевые плотины в полной безопасности!"
+            )
 
 
 class GlobalButtonHoverFilter(QObject):

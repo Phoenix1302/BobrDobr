@@ -26,21 +26,11 @@ fi
 # 2. Compile standalone Windows executable (.exe)
 echo "[1/3] Compiling Windows .exe with BobrDobr beaver icon using PyInstaller..."
 wine "$WINE_PYTHON" -m PyInstaller \
-    --name=BobrDobr-VPN \
-    --onefile \
-    --windowed \
     --noconfirm \
     --clean \
-    --icon="Z:/workspace/src/assets/beaver.ico" \
-    --paths="Z:/workspace/src" \
-    --add-data="Z:/workspace/src/gui;gui" \
-    --add-data="Z:/workspace/src/core;core" \
-    --add-data="Z:/workspace/src/utils;utils" \
-    --add-data="Z:/workspace/src/assets;assets" \
-    --add-data="Z:/workspace/bin/windows;bin/windows" \
     --distpath="Z:/workspace/dist/windows" \
     --workpath="C:/win_build" \
-    "Z:/workspace/src/main.py"
+    "Z:/workspace/BobrDobr-VPN.spec"
 
 wineserver -w
 

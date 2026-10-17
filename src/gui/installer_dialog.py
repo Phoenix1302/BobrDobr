@@ -2,12 +2,13 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QRadioButton, QButtonGroup, QFrame, QMessageBox, QApplication
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QIcon, QDesktopServices
 from utils.installer_helper import (
     get_install_dir, install_to_system, update_system_installation,
     has_installed_version, revert_to_portable, full_system_uninstall
 )
+from utils.version import APP_VERSION, GITHUB_REPO
 from utils.platform_helper import is_admin, is_windows
 
 
@@ -359,3 +360,119 @@ class UninstallDialog(QDialog):
                     self.accept()
                 else:
                     QMessageBox.warning(self, "Ошибка", f"Не удалось полностью удалить программу:\n{msg}")
+
+
+class GitHubUpdateDialog(QDialog):
+    """Dialog notifying about a new version on GitHub and offering to open release / download."""
+
+    def __init__(self, parent=None, update_info: dict = None, app_icon: QIcon = None):
+        super().__init__(parent)
+        self.setWindowTitle("Обновление БобрДобр")
+        if app_icon:
+            self.setWindowIcon(app_icon)
+        self.setMinimumWidth(520)
+        self.setModal(True)
+        self.update_info = update_info or {}
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Header
+        title = QLabel("🚀 Доступна новая версия БобрДобр!")
+        title.setStyleSheet("font-size: 18px; font-weight: 800; color: #d97706;")
+        layout.addWidget(title)
+
+        curr_ver = self.update_info.get("current_version", APP_VERSION)
+        new_ver = self.update_info.get("latest_version", APP_VERSION)
+        rel_name = self.update_info.get("release_name", f"БобрДобр v{new_ver}")
+
+        desc = QLabel(
+            "На GitHub опубликован новый релиз приложения. "
+            "Рекомендуется обновиться для получения актуальных улучшений и исправлений."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #cbd5e1; font-size: 13px; line-height: 1.4;")
+        layout.addWidget(desc)
+
+        # Version comparison card
+        box = QFrame()
+        box.setStyleSheet("background-color: #182226; border: 1px solid #283941; border-radius: 10px; padding: 14px;")
+        box_layout = QVBoxLayout(box)
+        box_layout.setSpacing(10)
+
+        row_ver = QHBoxLayout()
+        row_ver.setSpacing(10)
+
+        lbl_c_tag = QLabel(f"Текущая: v{curr_ver}")
+        lbl_c_tag.setStyleSheet(
+            "background-color: #24343b; color: #94a3b8; font-weight: 700; "
+            "border: 1px solid #334852; border-radius: 6px; padding: 4px 10px; font-size: 12px;"
+        )
+        row_ver.addWidget(lbl_c_tag)
+
+        arrow = QLabel("➔")
+        arrow.setStyleSheet("color: #d97706; font-size: 15px; font-weight: 800;")
+        row_ver.addWidget(arrow)
+
+        lbl_n_tag = QLabel(f"Новая версия: v{new_ver}")
+        lbl_n_tag.setStyleSheet(
+            "background-color: rgba(16, 185, 129, 0.15); color: #34d399; font-weight: 800; "
+            "border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; padding: 4px 10px; font-size: 12px;"
+        )
+        row_ver.addWidget(lbl_n_tag)
+        row_ver.addStretch()
+        box_layout.addLayout(row_ver)
+
+        lbl_rel_title = QLabel(f"<b>Релиз:</b> {rel_name}")
+        lbl_rel_title.setStyleSheet("color: #f1f5f9; font-size: 13px;")
+        lbl_rel_title.setWordWrap(True)
+        box_layout.addWidget(lbl_rel_title)
+
+        # Body / Notes if available
+        body_text = self.update_info.get("body", "").strip()
+        if body_text:
+            lbl_notes_title = QLabel("Список изменений:")
+            lbl_notes_title.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 700;")
+            box_layout.addWidget(lbl_notes_title)
+
+            notes_frame = QFrame()
+            notes_frame.setStyleSheet("background-color: #12191d; border: 1px solid #1f2b31; border-radius: 6px; padding: 8px;")
+            notes_layout = QVBoxLayout(notes_frame)
+            notes_layout.setContentsMargins(6, 6, 6, 6)
+
+            lbl_body = QLabel(body_text[:400] + ("..." if len(body_text) > 400 else ""))
+            lbl_body.setWordWrap(True)
+            lbl_body.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+            notes_layout.addWidget(lbl_body)
+            box_layout.addWidget(notes_frame)
+
+        layout.addWidget(box)
+
+        # Action buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_later = QPushButton("Напомнить позже")
+        btn_later.setObjectName("btn_secondary")
+        btn_later.setCursor(Qt.PointingHandCursor)
+        btn_later.clicked.connect(self.reject)
+        btn_layout.addWidget(btn_later)
+
+        btn_open = QPushButton("🚀 Перейти к загрузке релиза")
+        btn_open.setObjectName("btn_primary")
+        btn_open.setCursor(Qt.PointingHandCursor)
+        btn_open.clicked.connect(self._open_release)
+        btn_layout.addWidget(btn_open)
+
+        layout.addLayout(btn_layout)
+
+    def _open_release(self):
+        target_url = self.update_info.get("release_url") or f"https://github.com/{GITHUB_REPO}/releases"
+        try:
+            QDesktopServices.openUrl(QUrl(target_url))
+        except Exception:
+            import webbrowser
+            webbrowser.open(target_url)
+        self.accept()
+
