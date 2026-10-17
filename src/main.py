@@ -231,8 +231,15 @@ class MainWindow(QMainWindow):
         """Cleanly and forcefully disconnects all VPNs and closes the application."""
         self._force_quitting = True
         self._clean_shutdown(wait=True)
-        self.tray_icon.hide()
+        if hasattr(self, "tray_icon"):
+            self.tray_icon.hide()
+        self.close()
         QApplication.instance().quit()
+        try:
+            import os
+            os._exit(0)
+        except Exception:
+            sys.exit(0)
 
     def _clean_shutdown(self, wait: bool = True):
         if hasattr(self, "amnezia_launcher") and self.amnezia_launcher.is_running():
@@ -1145,8 +1152,47 @@ class GlobalButtonHoverFilter(QObject):
         return super().eventFilter(obj, event)
 
 
+_SINGLE_INSTANCE_MUTEX = None
+
+
+def check_single_instance() -> bool:
+    """Returns True if this is the only running instance.
+    If another instance is already running on Windows, restores its window and returns False."""
+    global _SINGLE_INSTANCE_MUTEX
+    if not is_windows():
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        user32 = ctypes.windll.user32
+        mode_str = "Installed" if is_installed_mode() else "Portable"
+        mutex_name = f"Global\\BobrDobr_VPN_SingleInstance_{mode_str}_v1"
+        _SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(None, False, mutex_name)
+        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            def enum_cb(h, _):
+                length = user32.GetWindowTextLengthW(h)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(h, buff, length + 1)
+                    title = buff.value
+                    if "БобрДобр" in title and "Visual Studio" not in title:
+                        user32.ShowWindow(h, 9)  # SW_RESTORE
+                        user32.SetForegroundWindow(h)
+                        return False
+                return True
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+            return False
+        return True
+    except Exception:
+        return True
+
+
 def main():
     if is_windows():
+        if not check_single_instance():
+            sys.exit(0)
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("BobrDobr.VPN.Client.1")

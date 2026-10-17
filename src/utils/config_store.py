@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import glob
 import json
 import base64
@@ -32,6 +34,19 @@ def _encrypt_profile_secrets(profile: Dict[str, Any]) -> Dict[str, Any]:
     return p_copy
 
 
+def is_installed_mode() -> bool:
+    """Returns True if the running binary is inside %LOCALAPPDATA%/Programs/BobrDobr."""
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        inst_dir = os.path.normcase(os.path.abspath(os.path.join(local_appdata, "Programs", "BobrDobr")))
+        curr_exe = os.path.normcase(os.path.abspath(sys.executable))
+        return curr_exe.startswith(inst_dir)
+    except Exception:
+        return False
+
+
 def get_config_dir() -> str:
     """Returns the persistent configuration directory for BobrDobr VPN."""
     if is_windows():
@@ -51,8 +66,44 @@ def get_config_dir() -> str:
     return base
 
 
-def get_config_path() -> str:
+def get_installed_config_path() -> str:
+    """Returns the path to the installed version's settings.json."""
     return os.path.join(get_config_dir(), "settings.json")
+
+
+def get_portable_config_path() -> str:
+    """Returns the path to the portable version's settings_portable.json."""
+    return os.path.join(get_config_dir(), "settings_portable.json")
+
+
+def get_config_filename() -> str:
+    """Returns 'settings.json' for installed mode, and 'settings_portable.json' for portable mode."""
+    return "settings.json" if is_installed_mode() else "settings_portable.json"
+
+
+def get_config_path() -> str:
+    """
+    Returns the configuration file path for the active mode.
+    If running in portable mode and 'settings_portable.json' does not exist yet,
+    but legacy 'settings.json' exists, automatically copies existing profiles
+    so user settings are seamlessly preserved without starting from scratch.
+    """
+    cfg_dir = get_config_dir()
+    if is_installed_mode():
+        return os.path.join(cfg_dir, "settings.json")
+
+    portable_path = os.path.join(cfg_dir, "settings_portable.json")
+
+    # First-run graceful migration for portable version
+    if not os.path.exists(portable_path):
+        legacy_path = os.path.join(cfg_dir, "settings.json")
+        if os.path.isfile(legacy_path):
+            try:
+                shutil.copy2(legacy_path, portable_path)
+            except Exception:
+                pass
+
+    return portable_path
 
 
 class ConfigStore:

@@ -23,6 +23,9 @@ if [ ! -f "src/assets/beaver.ico" ] || [ ! -f "src/assets/check.png" ]; then
     wine "$WINE_PYTHON" "Z:/workspace/scripts/generate_ico.py" || true
 fi
 
+# 1.2 Ensure certifi is installed for SSL CA bundle
+wine "$WINE_PYTHON" -m pip install --no-warn-script-location certifi || true
+
 # 2. Compile standalone Windows executable (.exe)
 echo "[1/3] Compiling Windows .exe with BobrDobr beaver icon using PyInstaller..."
 wine "$WINE_PYTHON" -m PyInstaller \

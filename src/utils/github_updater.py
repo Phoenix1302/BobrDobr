@@ -1,6 +1,7 @@
 """GitHub Update Checker for BobrDobr VPN Launcher."""
 import json
 import re
+import ssl
 import urllib.request
 from typing import Dict, Any, Optional
 
@@ -17,6 +18,38 @@ def parse_version(v_str: str) -> tuple:
 def is_newer_version(remote_ver: str, current_ver: str) -> bool:
     """Returns True if remote_ver is strictly newer than current_ver."""
     return parse_version(remote_ver) > parse_version(current_ver)
+
+
+def _fetch_github_json(url: str, headers: dict, timeout: int = 6) -> Optional[Any]:
+    """
+    Fetches and parses JSON from GitHub API with resilient SSL verification fallback.
+    Gracefully handles Windows certificate store quirks, missing root certificates,
+    and third-party antivirus SSL/TLS inspection without throwing errors.
+    """
+    req = urllib.request.Request(url, headers=headers)
+
+    # 1. Try standard verified SSL context (optionally with certifi if installed)
+    try:
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ctx = ssl.create_default_context()
+
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e_standard:
+        err_msg = str(e_standard).lower()
+        # If failure is related to SSL/TLS certificate verification on Windows,
+        # fallback to unverified context to tolerate antivirus inspection or missing roots.
+        if "certificate" in err_msg or "ssl" in err_msg or "verify failed" in err_msg or "handshake" in err_msg:
+            try:
+                ctx_unverified = ssl._create_unverified_context()
+                with urllib.request.urlopen(req, timeout=timeout, context=ctx_unverified) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except Exception as e_fallback:
+                raise e_fallback
+        raise e_standard
 
 
 def check_github_update(
@@ -47,9 +80,8 @@ def check_github_update(
     # 1. Try /releases/latest first
     try:
         url = f"https://api.github.com/repos/{repo}/releases/latest"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        data = _fetch_github_json(url, headers, timeout=timeout)
+        if data and isinstance(data, dict):
             tag = data.get("tag_name", "")
             raw_ver = tag.lstrip("vV")
             result["latest_version"] = raw_ver
@@ -69,21 +101,19 @@ def check_github_update(
                 result["update_available"] = True
             return result
     except Exception as e_rel:
-        # 2. Fallback to /tags if /releases/latest is not found or empty
+        # 2. Fallback to /tags if /releases/latest failed or returned 404
         try:
             url_tags = f"https://api.github.com/repos/{repo}/tags"
-            req_tags = urllib.request.Request(url_tags, headers=headers)
-            with urllib.request.urlopen(req_tags, timeout=timeout) as resp:
-                tags = json.loads(resp.read().decode("utf-8"))
-                if tags and isinstance(tags, list):
-                    latest_tag = tags[0].get("name", "")
-                    raw_ver = latest_tag.lstrip("vV")
-                    result["latest_version"] = raw_ver
-                    result["release_name"] = f"БобрДобр v{raw_ver}"
-                    result["release_url"] = f"https://github.com/{repo}/releases/tag/{latest_tag}"
-                    if is_newer_version(raw_ver, current_version):
-                        result["update_available"] = True
-                    return result
+            tags = _fetch_github_json(url_tags, headers, timeout=timeout)
+            if tags and isinstance(tags, list):
+                latest_tag = tags[0].get("name", "")
+                raw_ver = latest_tag.lstrip("vV")
+                result["latest_version"] = raw_ver
+                result["release_name"] = f"БобрДобр v{raw_ver}"
+                result["release_url"] = f"https://github.com/{repo}/releases/tag/{latest_tag}"
+                if is_newer_version(raw_ver, current_version):
+                    result["update_available"] = True
+                return result
         except Exception as e_tags:
             result["error"] = str(e_tags)
             return result

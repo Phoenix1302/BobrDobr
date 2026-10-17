@@ -186,6 +186,13 @@ class UpdateDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
 
+        btn_cleanup = QPushButton("🗑 Удалить с ПК")
+        btn_cleanup.setObjectName("btn_destructive")
+        btn_cleanup.setCursor(Qt.PointingHandCursor)
+        btn_cleanup.setToolTip("Полностью удалить установленную копию из системы и вернуть статус чистой системы.")
+        btn_cleanup.clicked.connect(self._do_remove_installed)
+        btn_layout.addWidget(btn_cleanup)
+
         btn_update = QPushButton("🔄 Обновить версию")
         btn_update.setObjectName("btn_primary")
         btn_update.setCursor(Qt.PointingHandCursor)
@@ -193,6 +200,63 @@ class UpdateDialog(QDialog):
         btn_layout.addWidget(btn_update)
 
         layout.addLayout(btn_layout)
+
+    def _do_remove_installed(self):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Удаление установленной версии")
+        msg_box.setText(
+            "Вы действительно хотите удалить установленную версию БобрДобр с этого ПК?\n\n"
+            "Файлы программы в системе и ярлыки будут удалены. Ваши профили в портативной версии останутся сохранены."
+        )
+        msg_box.setIcon(QMessageBox.Question)
+        btn_del = msg_box.addButton("Удалить с ПК", QMessageBox.YesRole)
+        btn_del.setObjectName("btn_destructive")
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_cancel = msg_box.addButton("Отмена", QMessageBox.NoRole)
+        btn_cancel.setObjectName("btn_secondary")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        msg_box.setDefaultButton(btn_cancel)
+        msg_box.exec()
+        if msg_box.clickedButton() == btn_del:
+            from utils.installer_helper import (
+                kill_installed_processes, get_install_dir,
+                get_desktop_shortcut_path, get_start_menu_shortcut_path,
+                schedule_self_delete
+            )
+            kill_installed_processes()
+            install_dir = get_install_dir()
+            try:
+                for lnk in [get_desktop_shortcut_path(), get_start_menu_shortcut_path()]:
+                    if os.path.isfile(lnk):
+                        try:
+                            os.remove(lnk)
+                        except Exception:
+                            pass
+                if os.path.isdir(install_dir):
+                    shutil.rmtree(install_dir, ignore_errors=True)
+                if os.path.exists(install_dir):
+                    subprocess.run(["cmd.exe", "/c", f'rd /s /q "{install_dir}"'], capture_output=True)
+                if os.path.exists(install_dir):
+                    schedule_self_delete(install_dir)
+            except Exception as e:
+                print(f"Cleanup error: {e}")
+
+            # Also remove installed settings.json so Roaming is pure portable
+            try:
+                from utils.config_store import get_installed_config_path
+                inst_cfg = get_installed_config_path()
+                if os.path.isfile(inst_cfg):
+                    os.remove(inst_cfg)
+            except Exception:
+                pass
+
+            QMessageBox.information(
+                self,
+                "Удаление завершено",
+                "Установленная версия успешно удалена с компьютера.\n"
+                "Теперь используется только портативная версия."
+            )
+            self.accept()
 
     def _do_update(self):
         if is_windows() and not is_admin():

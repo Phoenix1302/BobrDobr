@@ -25,26 +25,12 @@ jobs:
       - name: Install Build Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PySide6 pyinstaller
+          pip install -r requirements.txt
 
       - name: Build Standalone Windows Executable
         shell: pwsh
         run: |
-          python -m PyInstaller `
-            --name=BobrDobr-VPN `
-            --onefile `
-            --windowed `
-            --noconfirm `
-            --clean `
-            --icon="src/assets/beaver.ico" `
-            --paths="src" `
-            --add-data="src/gui;gui" `
-            --add-data="src/core;core" `
-            --add-data="src/utils;utils" `
-            --add-data="src/assets;assets" `
-            --add-data="bin/windows;bin/windows" `
-            --distpath="dist/windows" `
-            "src/main.py"
+          python -m PyInstaller --clean --noconfirm --distpath="dist/windows" BobrDobr-VPN.spec
 
       - name: Create GitHub Release and Upload Binary
         uses: softprops/action-gh-release@v2

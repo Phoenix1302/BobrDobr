@@ -279,42 +279,38 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def perform_clean_settings_migration() -> int:
     """
-    Performs a clean-slate settings upgrade:
-    1. Backs up current settings.json to backups/ folder.
-    2. Sanitizes all profiles to canonical schema.
-    3. Resets all other launcher settings to pure baseline defaults.
-    4. Saves clean settings.json.
+    Performs a clean-slate settings upgrade for the installed system version:
+    1. Reads profiles from active settings (portable or existing installed).
+    2. Backs up existing installed settings.json if present.
+    3. Sanitizes all profiles to canonical schema.
+    4. Resets all other launcher settings to pure baseline defaults.
+    5. Saves clean settings.json for the installed system version.
     Returns the count of successfully migrated profiles.
     """
-    from utils.config_store import get_config_dir, get_config_path, settings
+    from utils.config_store import get_config_dir, get_installed_config_path, settings
     from utils.version import APP_VERSION
 
-    config_path = get_config_path()
-    raw_profiles = []
+    installed_config_path = get_installed_config_path()
+    raw_profiles = list(settings.get_profiles())
 
-    if os.path.isfile(config_path):
+    if os.path.isfile(installed_config_path):
         try:
             backup_dir = os.path.join(get_config_dir(), "backups")
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = os.path.join(backup_dir, f"settings_pre_upgrade_{ts}.json")
-            shutil.copy2(config_path, backup_path)
+            shutil.copy2(installed_config_path, backup_path)
         except Exception as e:
             print(f"Warning: could not create settings backup: {e}")
 
-        raw_profiles = list(settings.get_profiles())
-
-    # Also check if running next to a local settings.json in portable mode
-    if getattr(sys, "frozen", False):
-        local_cfg = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "settings.json")
-        if os.path.isfile(local_cfg) and os.path.normcase(local_cfg) != os.path.normcase(config_path):
-            try:
-                with open(local_cfg, "r", encoding="utf-8") as f:
-                    extra_data = json.load(f)
-                if isinstance(extra_data, dict) and isinstance(extra_data.get("profiles"), list):
-                    raw_profiles.extend(extra_data["profiles"])
-            except Exception:
-                pass
+        # Also pull any profiles from existing installed settings.json if upgrading
+        try:
+            with open(installed_config_path, "r", encoding="utf-8") as f:
+                inst_data = json.load(f)
+            if isinstance(inst_data, dict) and isinstance(inst_data.get("profiles"), list):
+                raw_profiles.extend(inst_data["profiles"])
+        except Exception:
+            pass
 
     sanitized_profiles = []
     seen_ids = set()
@@ -334,8 +330,15 @@ def perform_clean_settings_migration() -> int:
         "start_with_windows": False,
     }
 
-    settings.data = clean_data
-    settings.save()
+    # Write directly to installed_config_path
+    os.makedirs(os.path.dirname(installed_config_path), exist_ok=True)
+    with open(installed_config_path, "w", encoding="utf-8") as f:
+        json.dump(clean_data, f, indent=2, ensure_ascii=False)
+
+    if is_installed_mode():
+        settings.data = clean_data
+        settings.save()
+
     return len(sanitized_profiles)
 
 
@@ -412,6 +415,27 @@ def update_system_installation() -> Tuple[bool, str, int]:
         return False, str(e), 0
 
 
+def kill_installed_processes() -> None:
+    """Terminates any background processes running from %LOCALAPPDATA%/Programs/BobrDobr."""
+    if not is_windows():
+        return
+    try:
+        inst_exe = os.path.normcase(os.path.abspath(get_installed_exe_path()))
+        curr_pid = os.getpid()
+        ps_cmd = (
+            f"$target = '{inst_exe}'.ToLower(); "
+            f"Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.ExecutablePath -and ($_.ExecutablePath.ToLower() -eq $target) -and ($_.ProcessId -ne {curr_pid}) }} | "
+            f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+        )
+        kwargs = {"capture_output": True, "timeout": 5}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd], **kwargs)
+    except Exception:
+        pass
+
+
 def revert_to_portable(target_dir: Optional[str] = None) -> Tuple[bool, str]:
     """
     Copies executable back to Downloads folder, removes shortcuts,
@@ -437,6 +461,20 @@ def revert_to_portable(target_dir: Optional[str] = None) -> Tuple[bool, str]:
                     os.remove(lnk)
                 except Exception:
                     pass
+
+        # Copy current installed settings to settings_portable.json so user retains all profiles in portable mode
+        try:
+            from utils.config_store import get_installed_config_path, get_portable_config_path
+            inst_cfg = get_installed_config_path()
+            port_cfg = get_portable_config_path()
+            if os.path.isfile(inst_cfg):
+                shutil.copy2(inst_cfg, port_cfg)
+                try:
+                    os.remove(inst_cfg)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # Schedule cleanup of the installed folder on exit
         schedule_self_delete(get_install_dir())
@@ -557,12 +595,53 @@ def full_system_uninstall() -> Tuple[bool, str]:
 
 
 def schedule_self_delete(target_dir: str) -> None:
-    """Launches a detached background cmd to delete target_dir after process termination."""
+    """
+    Launches an independent background cleanup script that:
+    1. Patiently waits for the calling process (PID) to fully terminate.
+    2. Repeatedly attempts to delete target_dir for up to 40 retries.
+    3. Cleans up itself upon completion.
+    Uses 'ping' instead of 'timeout' to avoid 'Input redirection is not supported' errors.
+    """
     if not is_windows():
         return
     clean_dir = os.path.abspath(target_dir)
-    cmd_str = f'timeout /t 2 /nobreak > NUL & rmdir /s /q "{clean_dir}"'
+    if not os.path.exists(clean_dir):
+        return
+
+    pid = os.getpid()
+    temp_dir = os.environ.get("TEMP", os.path.expanduser("~"))
+    bat_path = os.path.join(temp_dir, f"bobrdobr_cleanup_{pid}_{uuid.uuid4().hex[:6]}.bat")
+
+    bat_content = f"""@echo off
+set "TARGET={clean_dir}"
+set "PID={pid}"
+
+:wait_pid
+tasklist /fi "PID eq %PID%" 2>nul | findstr /i "%PID%" >nul 2>&1
+if not errorlevel 1 (
+    ping 127.0.0.1 -n 2 >nul 2>&1
+    goto wait_pid
+)
+
+ping 127.0.0.1 -n 2 >nul 2>&1
+
+for /l %%i in (1,1,40) do (
+    if not exist "%TARGET%" goto done
+    del /f /q "%TARGET%\\BobrDobr-VPN.exe" >nul 2>&1
+    del /f /q /s "%TARGET%\\*.*" >nul 2>&1
+    rmdir /s /q "%TARGET%" >nul 2>&1
+    if not exist "%TARGET%" goto done
+    ping 127.0.0.1 -n 2 >nul 2>&1
+)
+
+:done
+(goto) 2>nul & del "%~f0" >nul 2>&1
+"""
+
     try:
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(bat_content)
+
         kwargs = {
             "close_fds": True,
             "creationflags": (
@@ -571,6 +650,6 @@ def schedule_self_delete(target_dir: str) -> None:
                 else 0x08000000
             )
         }
-        subprocess.Popen(["cmd.exe", "/c", cmd_str], **kwargs)
-    except Exception:
-        pass
+        subprocess.Popen(["cmd.exe", "/c", bat_path], **kwargs)
+    except Exception as e:
+        print(f"Warning: could not schedule self delete: {e}")
