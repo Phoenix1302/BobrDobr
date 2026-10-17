@@ -14,8 +14,8 @@ from utils.platform_helper import (
 
 class AmneziaWGLauncher(VPNLauncherBase):
     """
-    Launcher and orchestrator for AmneziaWG (wireguard-go fork with advanced DPI obfuscation).
-    Handles .conf parsing, in-memory config persistence, obfuscation parameter overrides,
+    Launcher and orchestrator for AmneziaWG (wireguard-go with custom packet header parameters).
+    Handles .conf parsing, in-memory config persistence, parameter overrides,
     and process execution across Windows and Linux.
     """
 

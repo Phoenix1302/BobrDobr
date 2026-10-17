@@ -56,7 +56,7 @@ class OpenConnectTab(QWidget):
 
         # 1.1 Маскировка трафика (Camouflage Secret для ocserv)
         self.camouflage_cb = QCheckBox("Маскировка шлюза (Camouflage):")
-        self.camouflage_cb.setToolTip("Режим скрытного сервиса ocserv: отправляет секретный ключ в строке запроса для обхода блокировок.")
+        self.camouflage_cb.setToolTip("Режим ocserv camouflage: передаёт секретный ключ в URL запроса для авторизации на шлюзе.")
         self.camouflage_cb.stateChanged.connect(self._on_camouflage_changed)
         server_layout.addWidget(self.camouflage_cb, 3, 0)
 

@@ -67,8 +67,8 @@ class AmneziaTab(QWidget):
 
         main_layout.addWidget(details_group)
 
-        # 3. Гидродинамическая маскировка (Защита плотины от лесонадзора / DPI)
-        obf_group = QGroupBox("Гидродинамическая маскировка (Защита плотины от лесонадзора / DPI)")
+        # 3. Дополнительные параметры пакетов и сигнатур (Jc, Jmin, Jmax, S1, S2, H1-H4)
+        obf_group = QGroupBox("Параметры пакетов и сигнатур туннеля (AmneziaWG)")
         obf_layout = QGridLayout(obf_group)
         obf_layout.setHorizontalSpacing(14)
         obf_layout.setVerticalSpacing(10)
