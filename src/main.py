@@ -355,11 +355,7 @@ class MainWindow(QMainWindow):
                 args = " ".join([f'"{a}"' for a in sys.argv])
             ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, None, 1)
             if ret > 32:
-                self._force_quitting = True
-                self._clean_shutdown(wait=True)
-                if hasattr(self, "tray_icon"):
-                    self.tray_icon.hide()
-                QApplication.instance().quit()
+                self._tray_force_quit()
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", f"Не удалось перезапустить с повышением прав:\n{e}")
 

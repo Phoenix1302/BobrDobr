@@ -11,11 +11,9 @@ mkdir -p bin/windows dist/windows
 
 WINE_PYTHON="C:\\Python311\\python.exe"
 
-# 1. Clean previous build caches and rotate running exe if locked
+# 1. Clean previous build caches
 rm -rf /tmp/win_build
-if [ -f "dist/windows/BobrDobr-VPN.exe" ]; then
-    mv -f dist/windows/BobrDobr-VPN.exe dist/windows/BobrDobr-VPN.old 2>/dev/null || rm -f dist/windows/BobrDobr-VPN.exe 2>/dev/null || true
-fi
+rm -f dist/windows/*.old 2>/dev/null || true
 
 # 1.1 Ensure multi-size Windows icon and checkmark assets are present
 if [ ! -f "src/assets/beaver.ico" ] || [ ! -f "src/assets/check.png" ]; then
@@ -40,4 +38,5 @@ wineserver -w
 echo "[2/3] All binaries (AmneziaWG, OpenConnect, Wintun, DLLs) are packaged inside single-file executable."
 
 echo "[3/3] Windows build complete!"
-echo "Artifact generated at: dist/windows/BobrDobr-VPN.exe"
+echo "Artifacts generated in dist/windows:"
+ls -lh dist/windows/BobrDobr-VPN*.exe 2>/dev/null || true

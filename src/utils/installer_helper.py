@@ -18,8 +18,19 @@ def get_install_dir() -> str:
 
 
 def get_installed_exe_path() -> str:
-    """Returns the full path to the installed BobrDobr-VPN.exe binary."""
-    return os.path.join(get_install_dir(), "BobrDobr-VPN.exe")
+    """Returns the full path to the installed executable binary."""
+    canonical = os.path.join(get_install_dir(), "BobrDobr-VPN.exe")
+    if os.path.isfile(canonical):
+        return canonical
+    inst_dir = get_install_dir()
+    if os.path.isdir(inst_dir):
+        try:
+            for f in os.listdir(inst_dir):
+                if f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
+                    return os.path.join(inst_dir, f)
+        except Exception:
+            pass
+    return canonical
 
 
 def is_installed_mode() -> bool:
@@ -30,17 +41,25 @@ def is_installed_mode() -> bool:
     if not getattr(sys, "frozen", False):
         return False
     try:
-        curr = os.path.normcase(os.path.abspath(sys.executable))
-        inst = os.path.normcase(os.path.abspath(get_installed_exe_path()))
-        return curr == inst
+        inst_dir = os.path.normcase(os.path.abspath(get_install_dir()))
+        curr_dir = os.path.normcase(os.path.abspath(os.path.dirname(sys.executable)))
+        return curr_dir == inst_dir
     except Exception:
         return False
 
 
 def has_installed_version() -> bool:
-    """Returns True if BobrDobr-VPN.exe is already installed on the system."""
+    """Returns True if any BobrDobr executable is installed on the system."""
     try:
-        return os.path.isfile(get_installed_exe_path())
+        inst_dir = get_install_dir()
+        if not os.path.isdir(inst_dir):
+            return False
+        if os.path.isfile(os.path.join(inst_dir, "BobrDobr-VPN.exe")):
+            return True
+        for f in os.listdir(inst_dir):
+            if f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
+                return True
+        return False
     except Exception:
         return False
 
@@ -102,13 +121,20 @@ def create_windows_shortcut(target_exe: str, lnk_path: str, description: str = "
 
 
 def kill_other_bobr_processes() -> None:
-    """Terminates other running BobrDobr-VPN.exe processes to avoid file lock during update."""
+    """Terminates other running BobrDobr processes to avoid file lock during update."""
     if not is_windows():
         return
+    curr_pid = os.getpid()
     try:
-        curr_pid = os.getpid()
+        kwargs = {"capture_output": True, "timeout": 5}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        subprocess.run(["taskkill", "/F", "/FI", f"PID ne {curr_pid}", "/IM", "BobrDobr*"], **kwargs)
+    except Exception:
+        pass
+    try:
         ps_cmd = (
-            f"Get-Process -Name 'BobrDobr-VPN' -ErrorAction SilentlyContinue | "
+            f"Get-Process -Name '*bobr*' -ErrorAction SilentlyContinue | "
             f"Where-Object {{ $_.Id -ne {curr_pid} }} | "
             f"Stop-Process -Force -ErrorAction SilentlyContinue"
         )
@@ -419,13 +445,20 @@ def kill_installed_processes() -> None:
     """Terminates any background processes running from %LOCALAPPDATA%/Programs/BobrDobr."""
     if not is_windows():
         return
+    curr_pid = os.getpid()
     try:
-        inst_exe = os.path.normcase(os.path.abspath(get_installed_exe_path()))
-        curr_pid = os.getpid()
+        kwargs = {"capture_output": True, "timeout": 5}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        subprocess.run(["taskkill", "/F", "/FI", f"PID ne {curr_pid}", "/IM", "BobrDobr*"], **kwargs)
+    except Exception:
+        pass
+    try:
+        inst_dir = os.path.normcase(os.path.abspath(get_install_dir()))
         ps_cmd = (
-            f"$target = '{inst_exe}'.ToLower(); "
+            f"$dir = '{inst_dir}'.ToLower(); "
             f"Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
-            f"Where-Object {{ $_.ExecutablePath -and ($_.ExecutablePath.ToLower() -eq $target) -and ($_.ProcessId -ne {curr_pid}) }} | "
+            f"Where-Object {{ $_.ProcessId -ne {curr_pid} -and ($_.Name -match '(?i)bobr' -or ($_.ExecutablePath -and $_.ExecutablePath.ToLower().StartsWith($dir))) }} | "
             f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
         )
         kwargs = {"capture_output": True, "timeout": 5}
@@ -434,6 +467,27 @@ def kill_installed_processes() -> None:
         subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd], **kwargs)
     except Exception:
         pass
+
+
+def restart_current_app() -> None:
+    """Relaunches the current portable executable and forcefully terminates the current instance."""
+    if not is_windows():
+        return
+    try:
+        curr_exe = os.path.abspath(sys.executable)
+        args = [curr_exe] + sys.argv[1:]
+        kwargs = {}
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS
+        subprocess.Popen(args, **kwargs)
+    except Exception as e:
+        print(f"Error restarting app: {e}")
+    finally:
+        try:
+            import os
+            os._exit(0)
+        except Exception:
+            sys.exit(0)
 
 
 def revert_to_portable(target_dir: Optional[str] = None) -> Tuple[bool, str]:
@@ -445,12 +499,13 @@ def revert_to_portable(target_dir: Optional[str] = None) -> Tuple[bool, str]:
         return False, "Поддерживается только в Windows."
 
     try:
+        from utils.version import APP_VERSION
         current_exe = os.path.abspath(sys.executable)
         if not target_dir:
             target_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         os.makedirs(target_dir, exist_ok=True)
 
-        portable_exe = os.path.join(target_dir, "BobrDobr-VPN.exe")
+        portable_exe = os.path.join(target_dir, f"BobrDobr-VPN-v{APP_VERSION}.exe")
         if os.path.normcase(current_exe) != os.path.normcase(portable_exe):
             shutil.copy2(current_exe, portable_exe)
 
@@ -627,7 +682,7 @@ ping 127.0.0.1 -n 2 >nul 2>&1
 
 for /l %%i in (1,1,40) do (
     if not exist "%TARGET%" goto done
-    del /f /q "%TARGET%\\BobrDobr-VPN.exe" >nul 2>&1
+    del /f /q "%TARGET%\\BobrDobr*.exe" >nul 2>&1
     del /f /q /s "%TARGET%\\*.*" >nul 2>&1
     rmdir /s /q "%TARGET%" >nul 2>&1
     if not exist "%TARGET%" goto done

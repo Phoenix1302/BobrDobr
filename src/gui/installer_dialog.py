@@ -237,7 +237,7 @@ class UpdateDialog(QDialog):
                 if os.path.exists(install_dir):
                     subprocess.run(["cmd.exe", "/c", f'rd /s /q "{install_dir}"'], capture_output=True)
                 if os.path.exists(install_dir):
-                    schedule_self_delete(install_dir)
+                    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", f'Remove-Item -Recurse -Force "{install_dir}" -ErrorAction SilentlyContinue'], capture_output=True)
             except Exception as e:
                 print(f"Cleanup error: {e}")
 
@@ -253,10 +253,11 @@ class UpdateDialog(QDialog):
             QMessageBox.information(
                 self,
                 "Удаление завершено",
-                "Установленная версия успешно удалена с компьютера.\n"
-                "Теперь используется только портативная версия."
+                "Установленная версия успешно удалена с компьютера.\n\n"
+                "Приложение сейчас перезапустится в чистом Portable-режиме."
             )
-            self.accept()
+            from utils.installer_helper import restart_current_app
+            restart_current_app()
 
     def _do_update(self):
         if is_windows() and not is_admin():

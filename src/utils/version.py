@@ -1,5 +1,5 @@
 """Application version and metadata."""
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 APP_NAME = "БобрДобр"
 APP_TITLE = f"{APP_NAME} v{APP_VERSION} | Заповедник гидроинженерии"
 GITHUB_REPO = "Phoenix1302/BobrDobr"
