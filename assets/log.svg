@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Small sprout on the log -->
+  <path d="M42 21 C41 15 45 12 49 13 C49 17 46 20 42 21 Z" fill="#22c55e"/>
+  <path d="M42 21 C38 18 38 14 42 12 C43 16 43 19 42 21 Z" fill="#4ade80"/>
+  <path d="M42 22 Q42 18 44 14" stroke="#15803d" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+
+  <!-- Main Log Bark Body -->
+  <path d="M14 20 L48 20 C52 20 56 24 56 32 C56 40 52 44 48 44 L14 44 Z" fill="#78350f"/>
+  
+  <!-- Bark Shadow (bottom half) -->
+  <path d="M14 34 L48 34 C52 34 56 37 56 40 C55 42.5 52 44 48 44 L14 44 Z" fill="#582408" opacity="0.7"/>
+
+  <!-- Bark Texture Stripes -->
+  <path d="M22 25 L46 25" stroke="#9a3412" stroke-width="2" stroke-linecap="round"/>
+  <path d="M26 30 L40 30" stroke="#9a3412" stroke-width="2" stroke-linecap="round"/>
+  <path d="M20 38 L48 38" stroke="#451a03" stroke-width="2" stroke-linecap="round"/>
+  <path d="M24 34 L36 34" stroke="#451a03" stroke-width="1.8" stroke-linecap="round"/>
+
+  <!-- Wood Cut Cross-Section (Left End) -->
+  <ellipse cx="14" cy="32" rx="7" ry="12" fill="#fef3c7" stroke="#451a03" stroke-width="2"/>
+  
+  <!-- Growth Rings -->
+  <ellipse cx="14" cy="32" rx="4.8" ry="8.2" fill="none" stroke="#d97706" stroke-width="1.5"/>
+  <ellipse cx="14" cy="32" rx="2.6" ry="4.5" fill="none" stroke="#b45309" stroke-width="1.2"/>
+  <circle cx="14" cy="32" r="1.1" fill="#78350f"/>
+  
+  <!-- Tiny natural crack in wood cross section -->
+  <path d="M14 32 L18 35" stroke="#92400e" stroke-width="1" stroke-linecap="round"/>
+</svg>

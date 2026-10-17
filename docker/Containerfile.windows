@@ -1,0 +1,50 @@
+# ==============================================================================
+# Containerfile.windows - Isolated Windows Cross-Compilation via Wine
+# Uses portable Windows Python 3.11 with PySide6 and PyInstaller.
+# 100% headless, no GUI dependencies or X11 required.
+# ==============================================================================
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV WINEPREFIX=/root/.wine
+ENV WINEDEBUG=-all
+
+# Install Wine 64-bit, curl, unzip, ca-certificates
+RUN dpkg --add-architecture i386 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    wine \
+    wine64 \
+    curl \
+    wget \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize Wine cleanly
+RUN wineboot -u && wineserver -w
+
+# Download and extract official portable Windows Python 3.11.8 64-bit
+RUN mkdir -p /root/.wine/drive_c/Python311 && \
+    curl -fsSL https://www.python.org/ftp/python/3.11.8/python-3.11.8-embed-amd64.zip -o /tmp/python-embed.zip && \
+    unzip -q /tmp/python-embed.zip -d /root/.wine/drive_c/Python311 && \
+    rm /tmp/python-embed.zip
+
+# Enable standard site-packages in python311._pth
+RUN sed -i 's/^#import site/import site/' /root/.wine/drive_c/Python311/python311._pth
+
+# Install pip using get-pip.py
+RUN curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && \
+    wine "C:\\Python311\\python.exe" /tmp/get-pip.py && \
+    wineserver -w && \
+    rm /tmp/get-pip.py
+
+# Install PySide6 and PyInstaller for Windows
+RUN wine "C:\\Python311\\python.exe" -m pip install --no-warn-script-location \
+    PySide6==6.7.0 \
+    pyinstaller==6.6.0 && \
+    wineserver -w
+
+WORKDIR /workspace
+
+CMD ["/bin/bash", "docker/scripts/build_windows.sh"]

@@ -1,0 +1,17 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+  <ellipse cx='14' cy='40' rx='13' ry='7' fill='#4a2810' transform='rotate(-15 14 40)'/>
+  <path d='M6 37 Q14 40 22 43 M7 43 Q14 40 21 37' stroke='#2e1505' stroke-width='1.5' fill='none'/>
+  <ellipse cx='36' cy='38' rx='20' ry='16' fill='#8b5a2b'/>
+  <ellipse cx='38' cy='40' rx='14' ry='10' fill='#a67242'/>
+  <circle cx='44' cy='24' r='13' fill='#8b5a2b'/>
+  <circle cx='41' cy='13' r='4.5' fill='#4a2810'/>
+  <circle cx='41' cy='13' r='2.2' fill='#a67242'/>
+  <ellipse cx='50' cy='26' rx='6.5' ry='5' fill='#d4a373'/>
+  <ellipse cx='52' cy='23.5' rx='3' ry='2' fill='#1f140e'/>
+  <rect x='49' y='30' width='2.6' height='4' rx='0.5' fill='#ffffff' stroke='#e0e0e0' stroke-width='0.3'/>
+  <rect x='52.2' y='30' width='2.6' height='4' rx='0.5' fill='#ffffff' stroke='#e0e0e0' stroke-width='0.3'/>
+  <circle cx='46' cy='20.5' r='2.2' fill='#1a1a1a'/>
+  <circle cx='46.8' cy='19.7' r='0.8' fill='#ffffff'/>
+  <ellipse cx='46' cy='48' rx='5.5' ry='3.5' fill='#4a2810'/>
+  <ellipse cx='28' cy='48' rx='5.5' ry='3.5' fill='#4a2810'/>
+</svg>

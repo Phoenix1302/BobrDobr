@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+
+# PyInstaller / Build artifacts
+dist/
+build/
+*.manifest
+*.old*
+*.bak*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
+.vscode/
+.idea/
+
+# Local deployment scripts containing secrets
+scripts/git_sync.ps1
+scripts/install_git.ps1

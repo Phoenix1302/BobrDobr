@@ -1,0 +1,59 @@
+# ==============================================================================
+# Containerfile.build - Isolated Build Environment for Linux
+# Builds standalone Linux executable with PySide6, PyInstaller, and VPN dependencies
+# Zero pollution on host machine.
+# ==============================================================================
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV GOPATH=/go
+ENV PATH="/usr/local/go/bin:/go/bin:${PATH}"
+
+# Install core build dependencies, Python, modern Go, and Qt6 system libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    build-essential \
+    binutils \
+    patchelf \
+    git \
+    curl \
+    ca-certificates \
+    openconnect \
+    vpnc-scripts \
+    # Required system libraries for Qt6 / PySide6 GUI and X11/Wayland
+    libgl1 \
+    libegl1 \
+    libxkbcommon-x11-0 \
+    libxkbcommon0 \
+    libdbus-1-3 \
+    libxcb1 \
+    libxcb-cursor0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libxcb-sync1 \
+    libxcb-xfixes0 \
+    libxcb-xinerama0 \
+    libxcb-xinput0 \
+    libfontconfig1 \
+    libfreetype6 \
+    libx11-xcb1 \
+    libsm6 \
+    libice6 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install modern Go (1.24+) for building amneziawg-go
+RUN curl -fsSL https://go.dev/dl/go1.24.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+
+WORKDIR /workspace
+
+CMD ["/bin/bash", "docker/scripts/build_linux.sh"]
