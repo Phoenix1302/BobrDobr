@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <defs>
+    <linearGradient id="amzGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#b45309" stop-opacity="0.06"/>
+    </linearGradient>
+  </defs>
+  <circle cx="24" cy="24" r="18.5" fill="url(#amzGrad)" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m8.618 10.978 9.94 28.537 5.442-16.793 5.441 16.793 9.941-28.537" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -823,6 +823,62 @@ def resolve_spin_down_icon_path() -> str:
     return ""
 
 
+def resolve_amnezia_icon_path() -> str:
+    """Finds the AmneziaWG SVG icon across frozen bundle and source paths."""
+    candidates = [
+        os.path.join(get_base_dir(), "assets", "amnezia.svg"),
+        os.path.join(get_base_dir(), "src", "assets", "amnezia.svg"),
+        os.path.join(os.path.dirname(__file__), "..", "assets", "amnezia.svg"),
+        os.path.join(os.path.dirname(__file__), "assets", "amnezia.svg"),
+        os.path.join(os.getcwd(), "assets", "amnezia.svg"),
+        os.path.join(os.getcwd(), "src", "assets", "amnezia.svg"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c).replace("\\", "/")
+    return ""
+
+
+def resolve_openconnect_icon_path() -> str:
+    """Finds the OpenConnect SVG icon across frozen bundle and source paths."""
+    candidates = [
+        os.path.join(get_base_dir(), "assets", "openconnect.svg"),
+        os.path.join(get_base_dir(), "src", "assets", "openconnect.svg"),
+        os.path.join(os.path.dirname(__file__), "..", "assets", "openconnect.svg"),
+        os.path.join(os.path.dirname(__file__), "assets", "openconnect.svg"),
+        os.path.join(os.getcwd(), "assets", "openconnect.svg"),
+        os.path.join(os.getcwd(), "src", "assets", "openconnect.svg"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c).replace("\\", "/")
+    return ""
+
+
+def get_amnezia_icon():
+    from PySide6.QtGui import QIcon
+    p = resolve_amnezia_icon_path()
+    return QIcon(p) if p else QIcon()
+
+
+def get_openconnect_icon():
+    from PySide6.QtGui import QIcon
+    p = resolve_openconnect_icon_path()
+    return QIcon(p) if p else QIcon()
+
+
+def get_amnezia_pixmap(width: int = 16, height: int = 16):
+    from PySide6.QtCore import QSize
+    icon = get_amnezia_icon()
+    return icon.pixmap(QSize(width, height))
+
+
+def get_openconnect_pixmap(width: int = 16, height: int = 16):
+    from PySide6.QtCore import QSize
+    icon = get_openconnect_icon()
+    return icon.pixmap(QSize(width, height))
+
+
 def get_stylesheet() -> str:
     """Returns the complete dark stylesheet with resolved checkmark and arrow icon assets."""
     icon_path = resolve_check_icon_path()

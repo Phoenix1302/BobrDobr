@@ -368,6 +368,36 @@ def perform_clean_settings_migration() -> int:
     return len(sanitized_profiles)
 
 
+def get_migratable_profiles_count() -> int:
+    """
+    Calculates and returns the exact count of unique profiles that will be
+    preserved and migrated during system update.
+    Reads from the installed settings.json (if present) and current settings.
+    """
+    from utils.config_store import get_installed_config_path, settings
+    installed_config_path = get_installed_config_path()
+    raw_profiles = list(settings.get_profiles())
+
+    if os.path.isfile(installed_config_path):
+        try:
+            with open(installed_config_path, "r", encoding="utf-8") as f:
+                inst_data = json.load(f)
+            if isinstance(inst_data, dict) and isinstance(inst_data.get("profiles"), list):
+                raw_profiles.extend(inst_data["profiles"])
+        except Exception:
+            pass
+
+    sanitized_profiles = []
+    seen_ids = set()
+    for p in raw_profiles:
+        clean = sanitize_profile(p)
+        if clean and clean["id"] not in seen_ids:
+            seen_ids.add(clean["id"])
+            sanitized_profiles.append(clean)
+
+    return len(sanitized_profiles)
+
+
 def install_to_system() -> Tuple[bool, str]:
     """
     Copies current executable into %LOCALAPPDATA%/Programs/BobrDobr/

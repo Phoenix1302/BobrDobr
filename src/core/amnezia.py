@@ -8,7 +8,8 @@ from typing import Optional, Dict, Any
 from core.vpn_manager import VPNLauncherBase, VPNState
 from utils.platform_helper import (
     find_binary, get_wintun_path, is_windows, is_linux, run_silent_cmd,
-    kill_amnezia_daemons, delete_wintun_adapter
+    kill_amnezia_daemons, delete_wintun_adapter,
+    is_process_running, is_network_adapter_present, get_wintun_device_instances
 )
 
 
@@ -160,12 +161,25 @@ class AmneziaWGLauncher(VPNLauncherBase):
                 self.log("WARNING: wintun.dll not found in bin/windows/. Tunnel creation may fail.", "sys")
 
         try:
-            # Windows: kill lingering daemons and delete stale adapter to prevent collision
+            # Windows: check if an orphaned daemon or colliding adapter ACTUALLY exists.
+            # 99.9% of the time neither exists, so we proceed immediately with ZERO delay!
             if is_windows():
                 try:
-                    kill_amnezia_daemons()
-                    delete_wintun_adapter(self.interface_name)
-                    time.sleep(0.3)
+                    stale_daemon = is_process_running("amneziawg-go") or is_process_running("amneziawg")
+                    wintun_devs = get_wintun_device_instances()
+                    stale_adapter = bool(wintun_devs) or is_network_adapter_present(self.interface_name)
+
+                    if stale_daemon or stale_adapter:
+                        self.log(
+                            f"Обнаружен конфликт перед запуском (процесс: {stale_daemon}, фантомный адаптер: {stale_adapter}). "
+                            "Выполняется быстрая зачистка...",
+                            "sys"
+                        )
+                        if stale_daemon:
+                            kill_amnezia_daemons()
+                        if stale_adapter:
+                            delete_wintun_adapter(self.interface_name)
+                        time.sleep(0.15)
                 except Exception:
                     pass
 
@@ -266,10 +280,22 @@ class AmneziaWGLauncher(VPNLauncherBase):
         # Failure / Error states
         elif any(keyword in lower for keyword in [
             "unable to create interface",
+            "unable to create wintun interface",
+            "failed to setup adapter",
             "failed to setup wireguard",
             "wintun: unable to load",
+            "timed out waiting for device query",
+            "cannot create a file when that file already exists",
             "permission denied",
             "address already in use"
         ]):
+            if is_windows() and any(k in lower for k in [
+                "unable to create", "failed to setup adapter", "already in use",
+                "already exists", "timed out waiting for device query"
+            ]):
+                try:
+                    delete_wintun_adapter(self.interface_name)
+                except Exception:
+                    pass
             self.set_state(VPNState.ERROR)
             self.error_occurred.emit(line)

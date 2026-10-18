@@ -12,6 +12,7 @@ from PySide6.QtSvg import QSvgRenderer
 from core.amnezia import AmneziaWGLauncher
 from utils.config_store import settings
 from utils.platform_helper import get_base_dir
+from gui.styles import get_amnezia_icon, get_openconnect_icon
 
 
 class PasswordPromptDialog(QDialog):
@@ -220,8 +221,16 @@ class ProfileDialog(QDialog):
         self.combo_proto.setView(QListView())
         self.combo_proto.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
         self.combo_proto.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.combo_proto.addItem("⚡  AmneziaWG", "amnezia")
-        self.combo_proto.addItem("🔒  OpenConnect", "openconnect")
+        amz_icon = get_amnezia_icon()
+        oc_icon = get_openconnect_icon()
+        if not amz_icon.isNull():
+            self.combo_proto.addItem(amz_icon, "  AmneziaWG", "amnezia")
+        else:
+            self.combo_proto.addItem("⚡  AmneziaWG", "amnezia")
+        if not oc_icon.isNull():
+            self.combo_proto.addItem(oc_icon, "  OpenConnect", "openconnect")
+        else:
+            self.combo_proto.addItem("🔒  OpenConnect", "openconnect")
         self.combo_proto.currentIndexChanged.connect(self._on_proto_changed)
         base_form.addRow("Протокол:", self.combo_proto)
 

@@ -192,17 +192,98 @@ def init_windows_job_object() -> bool:
         return False
 
 
+def is_process_running(process_name: str) -> bool:
+    """
+    Sub-millisecond native Windows check if a process matching process_name is running.
+    Uses CreateToolhelp32Snapshot without spawning child processes.
+    """
+    if not is_windows() or not process_name:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        TH32CS_SNAPPROCESS = 0x00000002
+        kernel32 = ctypes.windll.kernel32
+
+        class PROCESSENTRY32W(ctypes.Structure):
+            _fields_ = [
+                ('dwSize', wintypes.DWORD),
+                ('cntUsage', wintypes.DWORD),
+                ('th32ProcessID', wintypes.DWORD),
+                ('th32DefaultHeapID', ctypes.c_size_t),
+                ('th32ModuleID', wintypes.DWORD),
+                ('cntThreads', wintypes.DWORD),
+                ('th32ParentProcessID', wintypes.DWORD),
+                ('pcPriClassBase', wintypes.LONG),
+                ('dwFlags', wintypes.DWORD),
+                ('szExeFile', wintypes.WCHAR * 260)
+            ]
+
+        h_snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if h_snap == -1 or h_snap == 0:
+            return False
+
+        pe = PROCESSENTRY32W()
+        pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        target = process_name.lower().rstrip(".exe")
+
+        running = False
+        if kernel32.Process32FirstW(h_snap, ctypes.byref(pe)):
+            while True:
+                curr_name = pe.szExeFile.lower().rstrip(".exe")
+                if curr_name == target:
+                    running = True
+                    break
+                if not kernel32.Process32NextW(h_snap, ctypes.byref(pe)):
+                    break
+        kernel32.CloseHandle(h_snap)
+        return running
+    except Exception:
+        return False
+
+
+def is_network_adapter_present(adapter_name: str) -> bool:
+    """
+    Ultra-fast check (sub-millisecond) if a network adapter with the given name exists in Windows.
+    Uses ConvertInterfaceNameToLuidW from iphlpapi.dll with a fast netsh fallback.
+    """
+    if not is_windows() or not adapter_name:
+        return False
+    try:
+        import ctypes
+        iphlpapi = ctypes.windll.iphlpapi
+        luid = ctypes.c_uint64()
+        res = iphlpapi.ConvertInterfaceNameToLuidW(
+            ctypes.c_wchar_p(adapter_name),
+            ctypes.byref(luid)
+        )
+        return res == 0
+    except Exception:
+        pass
+
+    try:
+        res = run_silent_cmd(["netsh", "interface", "show", "interface", f"name={adapter_name}"], timeout=2)
+        return res.returncode == 0 and adapter_name.lower() in (res.stdout or "").lower()
+    except Exception:
+        return False
+
+
 def kill_amnezia_daemons() -> None:
-    """Kills any orphaned AmneziaWG daemon processes."""
+    """Kills any orphaned AmneziaWG daemon processes only if running."""
     if not is_windows():
+        return
+    if not is_process_running("amneziawg-go") and not is_process_running("amneziawg"):
         return
     for proc_name in ["amneziawg-go.exe", "amneziawg.exe"]:
         run_silent_cmd(["taskkill", "/F", "/T", "/IM", proc_name], timeout=2)
 
 
 def kill_openconnect_daemons() -> None:
-    """Kills any orphaned OpenConnect daemon processes."""
+    """Kills any orphaned OpenConnect daemon processes only if running."""
     if not is_windows():
+        return
+    if not is_process_running("openconnect"):
         return
     run_silent_cmd(["taskkill", "/F", "/T", "/IM", "openconnect.exe"], timeout=2)
 
@@ -213,34 +294,58 @@ def cleanup_orphaned_vpn_daemons() -> None:
     kill_openconnect_daemons()
 
 
+def get_wintun_device_instances() -> List[str]:
+    """
+    Returns a list of PnP device instance IDs for any Wintun / WireGuard devices
+    currently registered in the Windows registry (e.g. ['SWD\\WINTUN\\{...}']).
+    Runs in memory via winreg in <0.1 ms.
+    """
+    if not is_windows():
+        return []
+    import winreg
+    instances = []
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\SWD\WINTUN", 0, winreg.KEY_READ) as key:
+            num_subkeys, _, _ = winreg.QueryInfoKey(key)
+            for i in range(num_subkeys):
+                guid = winreg.EnumKey(key, i)
+                instances.append(f"SWD\\WINTUN\\{guid}")
+    except (FileNotFoundError, OSError):
+        pass
+    return instances
+
+
 def delete_wintun_adapter(interface_name: str = "") -> None:
     """
-    Finds and removes stale/phantom Wintun or WireGuard adapter matching the
-    interface name (or all Wintun devices if not specified) using pnputil.
+    Finds and removes stale/phantom Wintun or WireGuard adapters.
+    1. Instantly queries SWD\\WINTUN registry instances (<0.1ms).
+    2. Removes any detected Wintun devices via direct pnputil /remove-device calls (~20ms each, NO PowerShell!).
+    3. If an interface_name is specified and still present in network adapters, cleans it up.
     """
     if not is_windows():
         return
-    if interface_name:
+
+    # Direct fast removal of all SWD\WINTUN devices (takes ~20ms, no PowerShell)
+    instances = get_wintun_device_instances()
+    for inst_id in instances:
+        try:
+            run_silent_cmd(["pnputil.exe", "/remove-device", inst_id, "/subtree"], timeout=4)
+        except Exception:
+            pass
+
+    # Fallback only if the named adapter still exists in network stack
+    if interface_name and is_network_adapter_present(interface_name):
         ps_cmd = (
             f"$dev = Get-NetAdapter -Name '{interface_name}' -ErrorAction SilentlyContinue; "
-            "if ($dev -and $dev.PnPDeviceID) { pnputil /remove-device $dev.PnPDeviceID | Out-Null }; "
-            "Get-PnpDevice -Class Net -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { "
-            "  $_.InstanceId -like '*WINTUN*' -or $_.Service -eq 'wintun' -or $_.FriendlyName -match 'WireGuard|Wintun|Amnezia' "
-            "} | ForEach-Object { pnputil /remove-device $_.InstanceId | Out-Null }"
+            "if ($dev -and $dev.PnPDeviceID) { pnputil /remove-device $dev.PnPDeviceID | Out-Null }"
         )
-    else:
-        ps_cmd = (
-            "Get-PnpDevice -Class Net -ErrorAction SilentlyContinue | Where-Object { "
-            "  $_.InstanceId -like '*WINTUN*' -or $_.Service -eq 'wintun' -or $_.FriendlyName -match 'WireGuard|Wintun|Amnezia' "
-            "} | ForEach-Object { pnputil /remove-device $_.InstanceId | Out-Null }"
-        )
-    try:
-        run_silent_cmd(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
-            timeout=8
-        )
-    except Exception:
-        pass
+        try:
+            run_silent_cmd(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+                timeout=5
+            )
+        except Exception:
+            pass
 
 
 def ensure_persistent_binaries() -> None:

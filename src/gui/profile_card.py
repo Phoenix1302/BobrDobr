@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt, Signal
 from core.vpn_manager import VPNState
+from gui.styles import get_amnezia_pixmap, get_openconnect_pixmap
 
 
 CONNECT_BTN_STYLE = """
@@ -223,30 +224,52 @@ class VPNProfileCard(QFrame):
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
 
-        # Бейдж типа протокола
-        proto_badge = QLabel()
+        # Бейдж типа протокола с векторным значком
+        proto_badge = QFrame()
+        proto_badge.setFixedHeight(26)
+        proto_badge_layout = QHBoxLayout(proto_badge)
+        proto_badge_layout.setContentsMargins(6, 2, 8, 2)
+        proto_badge_layout.setSpacing(5)
+
+        lbl_proto_icon = QLabel()
+        lbl_proto_icon.setFixedSize(14, 14)
+        lbl_proto_icon.setScaledContents(True)
+
+        lbl_proto_text = QLabel()
+
         if self.proto == "amnezia":
-            proto_badge.setText("⚡ AmneziaWG")
             proto_badge.setStyleSheet("""
-                background-color: rgba(56, 189, 248, 0.12);
-                color: #38bdf8;
-                border: 1px solid rgba(56, 189, 248, 0.35);
-                border-radius: 6px;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-weight: 800;
+                QFrame {
+                    background-color: rgba(245, 158, 11, 0.12);
+                    border: 1px solid rgba(245, 158, 11, 0.35);
+                    border-radius: 6px;
+                }
             """)
+            lbl_proto_text.setText("AmneziaWG")
+            lbl_proto_text.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+            amz_pix = get_amnezia_pixmap(14, 14)
+            if not amz_pix.isNull():
+                lbl_proto_icon.setPixmap(amz_pix)
+            else:
+                lbl_proto_icon.setText("⚡")
         else:
-            proto_badge.setText("🔒 OpenConnect")
             proto_badge.setStyleSheet("""
-                background-color: rgba(52, 211, 153, 0.12);
-                color: #34d399;
-                border: 1px solid rgba(52, 211, 153, 0.35);
-                border-radius: 6px;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-weight: 800;
+                QFrame {
+                    background-color: rgba(34, 211, 238, 0.12);
+                    border: 1px solid rgba(34, 211, 238, 0.35);
+                    border-radius: 6px;
+                }
             """)
+            lbl_proto_text.setText("OpenConnect")
+            lbl_proto_text.setStyleSheet("color: #22d3ee; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+            oc_pix = get_openconnect_pixmap(14, 14)
+            if not oc_pix.isNull():
+                lbl_proto_icon.setPixmap(oc_pix)
+            else:
+                lbl_proto_icon.setText("🛡")
+
+        proto_badge_layout.addWidget(lbl_proto_icon)
+        proto_badge_layout.addWidget(lbl_proto_text)
         top_row.addWidget(proto_badge)
 
         # Название профиля
@@ -285,12 +308,12 @@ class VPNProfileCard(QFrame):
             has_content = bool(self.profile.get("config_content"))
 
             if ep:
-                text_info = f"🌐 <span style='color: #cbd5e1; font-weight: 600;'>{ep}</span>   <span style='color: #334155;'>|</span>   📡 <span style='color: #38bdf8;'>{addr or 'Авто'}</span>   <span style='color: #334155;'>|</span>   <span style='color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;'>{iface}</span>"
+                text_info = f"🌐 <span style='color: #cbd5e1; font-weight: 600;'>{ep}</span>   <span style='color: #334155;'>|</span>   📡 <span style='color: #fbbf24;'>{addr or 'Авто'}</span>   <span style='color: #334155;'>|</span>   <span style='color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;'>{iface}</span>"
             elif cfg_path:
                 base_name = os.path.basename(cfg_path)
                 text_info = f"📄 <span style='color: #cbd5e1; font-weight: 600;'>{base_name}</span>   <span style='color: #334155;'>|</span>   <span style='color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;'>{iface}</span>"
             elif has_content:
-                text_info = f"⚡ <span style='color: #cbd5e1; font-weight: 600;'>Конфиг сохранён в профиле</span>   <span style='color: #334155;'>|</span>   <span style='color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;'>{iface}</span>"
+                text_info = f"🛡 <span style='color: #cbd5e1; font-weight: 600;'>Конфиг сохранён в профиле</span>   <span style='color: #334155;'>|</span>   <span style='color: #94a3b8; font-family: monospace; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;'>{iface}</span>"
             else:
                 text_info = "<span style='color: #f87171; font-weight: 600;'>⚠ Конфигурация не настроена (откройте «⚙ Настройки»)</span>"
 
@@ -311,7 +334,7 @@ class VPNProfileCard(QFrame):
             server = self.profile.get("server", "Не указан")
             port = self.profile.get("port", 443)
             cam = self.profile.get("camouflage", "")
-            cam_info = f"   <span style='color: #334155;'>|</span>   🎭 <span style='color: #fbbf24; font-family: monospace;'>?{cam}</span>" if cam else ""
+            cam_info = f"   <span style='color: #334155;'>|</span>   🎭 <span style='color: #22d3ee; font-family: monospace;'>?{cam}</span>" if cam else ""
             user = self.profile.get("username", "")
             user_info = f"   <span style='color: #334155;'>|</span>   👤 <span style='color: #cbd5e1;'>{user}</span>" if user else ""
             details_label = QLabel(f"🌐 <span style='color: #cbd5e1; font-weight: 600;'>{server}:{port}</span>{cam_info}{user_info}")
