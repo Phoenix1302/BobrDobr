@@ -208,6 +208,15 @@ def deploy_installed_files(current_exe: str, install_dir: str, installed_exe: st
     except Exception:
         pass
 
+    # Clean up obsolete %LOCALAPPDATA%/BobrDobr ghost folder if present
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        legacy_dir = os.path.join(local_appdata, "BobrDobr")
+        if os.path.isdir(legacy_dir):
+            shutil.rmtree(legacy_dir, ignore_errors=True)
+    except Exception:
+        pass
+
     meipass = getattr(sys, "_MEIPASS", None)
     bundled_launcher = None
 
@@ -261,14 +270,14 @@ def safe_replace_installed_exe(current_exe: str, installed_exe: str) -> None:
 
 
 def clean_persistent_binary_cache() -> None:
-    """Removes cached binaries in %LOCALAPPDATA%/BobrDobr/bin/ to force fresh extraction on next run."""
+    """Removes cached binaries and directory in %LOCALAPPDATA%/BobrDobr to avoid ghost folders."""
     try:
         local_appdata = os.environ.get("LOCALAPPDATA")
         if not local_appdata:
             local_appdata = os.path.join(os.path.expanduser("~"), "AppData", "Local")
-        bin_dir = os.path.join(local_appdata, "BobrDobr", "bin")
-        if os.path.isdir(bin_dir):
-            shutil.rmtree(bin_dir, ignore_errors=True)
+        local_bobr = os.path.join(local_appdata, "BobrDobr")
+        if os.path.isdir(local_bobr):
+            shutil.rmtree(local_bobr, ignore_errors=True)
     except Exception:
         pass
 

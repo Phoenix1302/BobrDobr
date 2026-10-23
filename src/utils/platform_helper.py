@@ -382,13 +382,13 @@ def ensure_persistent_binaries() -> None:
     cleanup_stale_temp_configs()
     cleanup_orphaned_vpn_daemons()
 
-    # In installed mode, clean up obsolete %LOCALAPPDATA%/BobrDobr/bin duplicate folder if it exists
+    # In installed mode, clean up obsolete %LOCALAPPDATA%/BobrDobr duplicate folder if it exists
     if is_installed_mode():
         try:
             local_appdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
-            dup_bin = os.path.join(local_appdata, "BobrDobr", "bin")
-            if os.path.isdir(dup_bin):
-                shutil.rmtree(dup_bin, ignore_errors=True)
+            legacy_dir = os.path.join(local_appdata, "BobrDobr")
+            if os.path.isdir(legacy_dir):
+                shutil.rmtree(legacy_dir, ignore_errors=True)
         except Exception:
             pass
 
