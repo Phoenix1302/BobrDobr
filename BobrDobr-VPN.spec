@@ -4,7 +4,7 @@ import os
 spec_dir = os.path.abspath(SPECPATH)
 
 # Read APP_VERSION dynamically from version.py
-app_version = "1.0.10"
+app_version = "1.0.12"
 version_file = os.path.join(spec_dir, "src", "utils", "version.py")
 if os.path.isfile(version_file):
     try:
@@ -39,11 +39,34 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# 1. Onedir launcher for installed system mode (runs directly from %LOCALAPPDATA%/Programs/BobrDobr without temp unpacking)
+exe_installed = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='BobrDobr-Installed',
+    contents_directory='.',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=[os.path.join(spec_dir, 'src', 'assets', 'beaver.ico')],
+)
+
+# 2. Standalone single-file executable for portable mode and distribution
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.datas,
+    a.datas + [('installed_launcher/BobrDobr-Installed.exe', exe_installed.name, 'DATA')],
     [],
     name=exe_output_name,
     debug=False,

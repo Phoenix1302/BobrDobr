@@ -26,8 +26,9 @@ def get_installed_exe_path() -> str:
     if os.path.isdir(inst_dir):
         try:
             for f in os.listdir(inst_dir):
-                if f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
-                    return os.path.join(inst_dir, f)
+                full_path = os.path.join(inst_dir, f)
+                if os.path.isfile(full_path) and f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
+                    return full_path
         except Exception:
             pass
     return canonical
@@ -57,7 +58,8 @@ def has_installed_version() -> bool:
         if os.path.isfile(os.path.join(inst_dir, "BobrDobr-VPN.exe")):
             return True
         for f in os.listdir(inst_dir):
-            if f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
+            full_path = os.path.join(inst_dir, f)
+            if os.path.isfile(full_path) and f.lower().startswith("bobrdobr") and f.lower().endswith(".exe"):
                 return True
         return False
     except Exception:
@@ -143,6 +145,107 @@ def kill_other_bobr_processes() -> None:
         pass
 
 
+def _safe_copy_file(src: str, dst: str) -> None:
+    """
+    Safely copies src to dst, handling file locks on Windows
+    via atomic rename fallback.
+    """
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.isfile(dst):
+        try:
+            s_stat = os.stat(src)
+            d_stat = os.stat(dst)
+            if s_stat.st_size == d_stat.st_size and abs(s_stat.st_mtime - d_stat.st_mtime) < 1.0:
+                return
+        except Exception:
+            pass
+        try:
+            shutil.copy2(src, dst)
+            return
+        except (PermissionError, OSError):
+            pass
+
+        old_file = dst + f".old_{uuid.uuid4().hex[:6]}"
+        try:
+            os.rename(dst, old_file)
+            shutil.copy2(src, dst)
+            try:
+                os.remove(old_file)
+            except Exception:
+                schedule_self_delete(old_file)
+            return
+        except Exception:
+            pass
+    else:
+        try:
+            shutil.copy2(src, dst)
+        except Exception:
+            pass
+
+
+def deploy_installed_files(current_exe: str, install_dir: str, installed_exe: str) -> None:
+    """
+    Deploys full directory-based installation into install_dir.
+    All runtime files, DLLs, and Python modules are placed permanently in install_dir,
+    allowing BobrDobr-VPN.exe to start up instantly without extracting to %TEMP% on every run.
+    """
+    kill_installed_processes()
+    kill_other_bobr_processes()
+    os.makedirs(install_dir, exist_ok=True)
+
+    # Clean any lingering .old_* files from previous updates
+    try:
+        for entry in os.listdir(install_dir):
+            if ".old_" in entry:
+                old_p = os.path.join(install_dir, entry)
+                try:
+                    if os.path.isdir(old_p):
+                        shutil.rmtree(old_p, ignore_errors=True)
+                    else:
+                        os.remove(old_p)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    bundled_launcher = None
+
+    if meipass and os.path.isdir(meipass):
+        cand = os.path.join(meipass, "installed_launcher", "BobrDobr-Installed.exe")
+        if os.path.isfile(cand):
+            bundled_launcher = cand
+
+        # Copy all runtime files from meipass to install_dir
+        for root, dirs, files in os.walk(meipass):
+            rel = os.path.relpath(root, meipass)
+            if rel == "." or rel == "":
+                target_root = install_dir
+            else:
+                if rel.startswith("installed_launcher"):
+                    continue
+                target_root = os.path.join(install_dir, rel)
+
+            for f in files:
+                src_file = os.path.join(root, f)
+                dst_file = os.path.join(target_root, f)
+                _safe_copy_file(src_file, dst_file)
+
+    # Deploy onedir launcher as installed_exe (BobrDobr-VPN.exe)
+    if bundled_launcher and os.path.isfile(bundled_launcher):
+        _safe_copy_file(bundled_launcher, installed_exe)
+    else:
+        _safe_copy_file(current_exe, installed_exe)
+
+    # Save backup of the standalone portable executable for clean reverting to portable
+    if os.path.isfile(current_exe):
+        try:
+            portable_backup = os.path.join(install_dir, "portable", "BobrDobr-VPN.exe")
+            _safe_copy_file(current_exe, portable_backup)
+        except Exception:
+            pass
+
+
 def safe_replace_installed_exe(current_exe: str, installed_exe: str) -> None:
     """
     Safely copies current_exe to installed_exe.
@@ -154,28 +257,7 @@ def safe_replace_installed_exe(current_exe: str, installed_exe: str) -> None:
 
     kill_other_bobr_processes()
     os.makedirs(os.path.dirname(installed_exe), exist_ok=True)
-
-    if os.path.isfile(installed_exe):
-        try:
-            shutil.copy2(current_exe, installed_exe)
-            return
-        except (PermissionError, OSError):
-            pass
-
-        # Windows file replacement trick: rename the locked file, then copy fresh file
-        old_exe = installed_exe + f".old_{uuid.uuid4().hex[:6]}"
-        try:
-            os.rename(installed_exe, old_exe)
-            shutil.copy2(current_exe, installed_exe)
-            try:
-                os.remove(old_exe)
-            except Exception:
-                schedule_self_delete(old_exe)
-            return
-        except Exception as e:
-            raise RuntimeError(f"Не удалось обновить исполняемый файл: {e}")
-
-    shutil.copy2(current_exe, installed_exe)
+    _safe_copy_file(current_exe, installed_exe)
 
 
 def clean_persistent_binary_cache() -> None:
@@ -400,8 +482,9 @@ def get_migratable_profiles_count() -> int:
 
 def install_to_system() -> Tuple[bool, str]:
     """
-    Copies current executable into %LOCALAPPDATA%/Programs/BobrDobr/
+    Copies current executable and all runtime dependencies into %LOCALAPPDATA%/Programs/BobrDobr/
     and creates shortcuts on Desktop and in Start Menu with Administrator privileges.
+    Uses directory-based permanent deployment so subsequent launches are instant without %TEMP% extraction.
     """
     if not is_windows():
         return False, "Установка поддерживается только в Windows."
@@ -420,7 +503,8 @@ def install_to_system() -> Tuple[bool, str]:
         # Clean old binary cache
         clean_persistent_binary_cache()
 
-        safe_replace_installed_exe(current_exe, installed_exe)
+        # Deploy directory-based installation without temporary unpacking
+        deploy_installed_files(current_exe, install_dir, installed_exe)
 
         desktop_lnk = get_desktop_shortcut_path()
         start_lnk = get_start_menu_shortcut_path()
@@ -438,7 +522,7 @@ def update_system_installation() -> Tuple[bool, str, int]:
     1. Backs up and sanitizes all existing connection profiles.
     2. Resets all other launcher settings to standard baseline defaults.
     3. Cleans obsolete binary caches.
-    4. Safely replaces the installed executable with the currently running binary.
+    4. Safely deploys all runtime files and updates the installed executable.
     5. Refreshes Desktop and Start Menu shortcuts.
     Returns (success, message_or_path, migrated_profile_count).
     """
@@ -449,6 +533,7 @@ def update_system_installation() -> Tuple[bool, str, int]:
 
     try:
         current_exe = os.path.abspath(sys.executable)
+        install_dir = get_install_dir()
         installed_exe = get_installed_exe_path()
 
         # 1. Clean settings migration
@@ -457,8 +542,8 @@ def update_system_installation() -> Tuple[bool, str, int]:
         # 2. Clean binary cache
         clean_persistent_binary_cache()
 
-        # 3. Replace installed executable
-        safe_replace_installed_exe(current_exe, installed_exe)
+        # 3. Deploy updated directory-based installation
+        deploy_installed_files(current_exe, install_dir, installed_exe)
 
         # 4. Refresh shortcuts
         desktop_lnk = get_desktop_shortcut_path()
@@ -536,7 +621,12 @@ def revert_to_portable(target_dir: Optional[str] = None) -> Tuple[bool, str]:
         os.makedirs(target_dir, exist_ok=True)
 
         portable_exe = os.path.join(target_dir, f"BobrDobr-VPN-v{APP_VERSION}.exe")
-        if os.path.normcase(current_exe) != os.path.normcase(portable_exe):
+
+        # Prefer the cached full standalone portable executable if present
+        portable_cached = os.path.join(get_install_dir(), "portable", "BobrDobr-VPN.exe")
+        if os.path.isfile(portable_cached):
+            shutil.copy2(portable_cached, portable_exe)
+        elif os.path.normcase(current_exe) != os.path.normcase(portable_exe):
             shutil.copy2(current_exe, portable_exe)
 
         # Remove shortcuts
