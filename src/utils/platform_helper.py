@@ -49,6 +49,21 @@ def run_silent_cmd(cmd: List[str], timeout: int = 5) -> subprocess.CompletedProc
 
 
 
+def is_installed_mode() -> bool:
+    """
+    Returns True if the running binary is inside %LOCALAPPDATA%/Programs/BobrDobr.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        inst_dir = os.path.normcase(os.path.abspath(os.path.join(local_appdata, "Programs", "BobrDobr")))
+        curr_exe = os.path.normcase(os.path.abspath(sys.executable))
+        return curr_exe.startswith(inst_dir)
+    except Exception:
+        return False
+
+
 def get_base_dir() -> str:
     """Returns the base directory of the running application, supporting PyInstaller bundles."""
     if getattr(sys, "frozen", False):
@@ -59,15 +74,20 @@ def get_base_dir() -> str:
 def get_persistent_bin_dir() -> str:
     """
     Returns a persistent, fixed directory on the host where binaries live.
-    Using a fixed path prevents Windows Firewall from re-prompting on every restart
-    due to dynamic PyInstaller temporary _MEIxxxxxx paths.
+    - In installed mode: points directly to %LOCALAPPDATA%/Programs/BobrDobr/bin/windows
+      (no redundant duplicate folder created on disk).
+    - In portable mode: points to %LOCALAPPDATA%/BobrDobr/bin to prevent Windows Firewall
+      re-prompting on every restart due to dynamic temp folders.
     """
     if is_windows():
         local_appdata = os.environ.get("LOCALAPPDATA")
-        if local_appdata:
-            base = os.path.join(local_appdata, "BobrDobr", "bin")
+        if not local_appdata:
+            local_appdata = os.path.join(os.path.expanduser("~"), "AppData", "Local")
+
+        if is_installed_mode():
+            base = os.path.join(local_appdata, "Programs", "BobrDobr", "bin", "windows")
         else:
-            base = os.path.join(os.path.expanduser("~"), "AppData", "Local", "BobrDobr", "bin")
+            base = os.path.join(local_appdata, "BobrDobr", "bin")
     else:
         base = os.path.expanduser("~/.local/share/bobrdobr/bin")
 
@@ -353,6 +373,7 @@ def ensure_persistent_binaries() -> None:
     Extracts bundled binaries (amneziawg-go, wintun.dll, openconnect) to a permanent
     host path and registers firewall authorization so security prompts never re-appear.
     Also cleans up leftover temporary directories and configs.
+    In installed mode, eliminates duplicate bin directory if present.
     """
     if not is_windows():
         return
@@ -361,22 +382,34 @@ def ensure_persistent_binaries() -> None:
     cleanup_stale_temp_configs()
     cleanup_orphaned_vpn_daemons()
 
+    # In installed mode, clean up obsolete %LOCALAPPDATA%/BobrDobr/bin duplicate folder if it exists
+    if is_installed_mode():
+        try:
+            local_appdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+            dup_bin = os.path.join(local_appdata, "BobrDobr", "bin")
+            if os.path.isdir(dup_bin):
+                shutil.rmtree(dup_bin, ignore_errors=True)
+        except Exception:
+            pass
+
     try:
         persistent_dir = get_persistent_bin_dir()
         base_dir = get_base_dir()
         bundled_dir = os.path.join(base_dir, "bin", "windows")
 
-        if os.path.isdir(bundled_dir):
-            for fname in os.listdir(bundled_dir):
-                src_file = os.path.join(bundled_dir, fname)
-                dst_file = os.path.join(persistent_dir, fname)
-                if os.path.isfile(src_file):
-                    # Copy if destination doesn't exist or size differs
-                    if not os.path.exists(dst_file) or os.path.getsize(src_file) != os.path.getsize(dst_file):
-                        try:
-                            shutil.copy2(src_file, dst_file)
-                        except Exception:
-                            pass
+        # Only copy if persistent_dir is different from bundled_dir (i.e. portable mode)
+        if os.path.normcase(os.path.abspath(persistent_dir)) != os.path.normcase(os.path.abspath(bundled_dir)):
+            if os.path.isdir(bundled_dir):
+                for fname in os.listdir(bundled_dir):
+                    src_file = os.path.join(bundled_dir, fname)
+                    dst_file = os.path.join(persistent_dir, fname)
+                    if os.path.isfile(src_file):
+                        # Copy if destination doesn't exist or size differs
+                        if not os.path.exists(dst_file) or os.path.getsize(src_file) != os.path.getsize(dst_file):
+                            try:
+                                shutil.copy2(src_file, dst_file)
+                            except Exception:
+                                pass
 
         # If running as Administrator, auto-authorize amneziawg-go in Windows Firewall
         awg_bin = os.path.join(persistent_dir, "amneziawg-go.exe")
