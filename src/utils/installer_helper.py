@@ -352,28 +352,14 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not content:
             return None
 
-        endpoint = str(p.get("endpoint") or "")
-        address = str(p.get("address") or "")
-        dns = str(p.get("dns") or "")
-        allowed_ips = str(p.get("allowed_ips") or "")
-        obfuscation = p.get("obfuscation") if isinstance(p.get("obfuscation"), dict) else {}
-
-        try:
-            parsed = AmneziaWGLauncher.parse_config_text(content)
-            if parsed.get("endpoint"):
-                endpoint = parsed["endpoint"]
-            if parsed.get("address"):
-                address = parsed["address"]
-            if parsed.get("dns"):
-                dns = parsed["dns"]
-            if parsed.get("allowed_ips"):
-                allowed_ips = parsed["allowed_ips"]
-            if parsed.get("obfuscation"):
-                obfuscation = parsed["obfuscation"]
-        except Exception:
-            pass
-
         if not name:
+            endpoint = str(p.get("endpoint") or "")
+            if not endpoint:
+                try:
+                    parsed = AmneziaWGLauncher.parse_config_text(content)
+                    endpoint = parsed.get("endpoint", "")
+                except Exception:
+                    pass
             name = f"AmneziaWG ({endpoint})" if endpoint else "AmneziaWG VPN"
 
         clean = {
@@ -382,12 +368,6 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "proto": "amnezia",
             "interface": str(p.get("interface") or "awg0").strip() or "awg0",
             "config_content": content,
-            "config_path": cfg_path if (cfg_path and os.path.isfile(cfg_path)) else "",
-            "endpoint": endpoint,
-            "address": address,
-            "dns": dns,
-            "allowed_ips": allowed_ips,
-            "obfuscation": obfuscation,
         }
         return clean
 
@@ -399,24 +379,43 @@ def perform_clean_settings_migration() -> int:
     Performs a clean-slate settings upgrade for the installed system version:
     1. Reads profiles from active settings (portable or existing installed).
     2. Backs up existing installed settings.json if present.
-    3. Sanitizes all profiles to canonical schema.
-    4. Resets all other launcher settings to pure baseline defaults.
-    5. Saves clean settings.json for the installed system version.
+    3. Prunes backups folder to keep only 3 most recent backups.
+    4. Sanitizes all profiles to canonical schema with disk encryption.
+    5. Resets all other launcher settings to pure baseline defaults.
+    6. Saves clean, hardened settings.json for the installed system version.
     Returns the count of successfully migrated profiles.
     """
-    from utils.config_store import get_config_dir, get_installed_config_path, settings
+    import copy
+    from utils.config_store import (
+        get_config_dir, get_installed_config_path, settings,
+        _decrypt_profile_secrets, _encrypt_profile_secrets
+    )
     from utils.version import APP_VERSION
 
     installed_config_path = get_installed_config_path()
     raw_profiles = list(settings.get_profiles())
 
     if os.path.isfile(installed_config_path):
+        backup_dir = os.path.join(get_config_dir(), "backups")
         try:
-            backup_dir = os.path.join(get_config_dir(), "backups")
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = os.path.join(backup_dir, f"settings_pre_upgrade_{ts}.json")
             shutil.copy2(installed_config_path, backup_path)
+
+            # Prune backups to keep only 3 most recent backups
+            backup_files = [
+                os.path.join(backup_dir, f)
+                for f in os.listdir(backup_dir)
+                if f.startswith("settings_pre_upgrade_") and f.endswith(".json")
+            ]
+            backup_files.sort(key=os.path.getmtime)
+            while len(backup_files) > 3:
+                old_bk = backup_files.pop(0)
+                try:
+                    os.remove(old_bk)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Warning: could not create settings backup: {e}")
 
@@ -432,10 +431,12 @@ def perform_clean_settings_migration() -> int:
     sanitized_profiles = []
     seen_ids = set()
     for p in raw_profiles:
-        clean = sanitize_profile(p)
-        if clean and clean["id"] not in seen_ids:
-            seen_ids.add(clean["id"])
-            sanitized_profiles.append(clean)
+        if isinstance(p, dict):
+            p_dec = _decrypt_profile_secrets(copy.deepcopy(p))
+            clean = sanitize_profile(p_dec)
+            if clean and clean["id"] not in seen_ids:
+                seen_ids.add(clean["id"])
+                sanitized_profiles.append(clean)
 
     # Standard clean baseline configuration
     clean_data = {
@@ -447,10 +448,12 @@ def perform_clean_settings_migration() -> int:
         "start_with_windows": False,
     }
 
-    # Write directly to installed_config_path
+    # Write directly to installed_config_path with hardened disk encryption
     os.makedirs(os.path.dirname(installed_config_path), exist_ok=True)
+    disk_data = copy.deepcopy(clean_data)
+    disk_data["profiles"] = [_encrypt_profile_secrets(p) for p in sanitized_profiles]
     with open(installed_config_path, "w", encoding="utf-8") as f:
-        json.dump(clean_data, f, indent=2, ensure_ascii=False)
+        json.dump(disk_data, f, indent=2, ensure_ascii=False)
 
     if is_installed_mode():
         settings.data = clean_data
@@ -465,7 +468,8 @@ def get_migratable_profiles_count() -> int:
     preserved and migrated during system update.
     Reads from the installed settings.json (if present) and current settings.
     """
-    from utils.config_store import get_installed_config_path, settings
+    import copy
+    from utils.config_store import get_installed_config_path, settings, _decrypt_profile_secrets
     installed_config_path = get_installed_config_path()
     raw_profiles = list(settings.get_profiles())
 
@@ -478,15 +482,17 @@ def get_migratable_profiles_count() -> int:
         except Exception:
             pass
 
-    sanitized_profiles = []
     seen_ids = set()
+    count = 0
     for p in raw_profiles:
-        clean = sanitize_profile(p)
-        if clean and clean["id"] not in seen_ids:
-            seen_ids.add(clean["id"])
-            sanitized_profiles.append(clean)
+        if isinstance(p, dict):
+            p_dec = _decrypt_profile_secrets(copy.deepcopy(p))
+            clean = sanitize_profile(p_dec)
+            if clean and clean["id"] not in seen_ids:
+                seen_ids.add(clean["id"])
+                count += 1
 
-    return len(sanitized_profiles)
+    return count
 
 
 def install_to_system() -> Tuple[bool, str]:

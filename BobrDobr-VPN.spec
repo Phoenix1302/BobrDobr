@@ -4,7 +4,7 @@ import os
 spec_dir = os.path.abspath(SPECPATH)
 
 # Read APP_VERSION dynamically from version.py
-app_version = "1.0.12"
+app_version = "1.0.13"
 version_file = os.path.join(spec_dir, "src", "utils", "version.py")
 if os.path.isfile(version_file):
     try:

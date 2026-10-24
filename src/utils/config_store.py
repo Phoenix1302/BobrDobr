@@ -11,26 +11,84 @@ from utils.platform_helper import is_windows
 from utils.crypto_helper import encrypt_secret, decrypt_secret, is_encrypted
 
 
+PROFILE_SECRET_KEYS = (
+    "config_content",
+    "password",
+    "private_key",
+    "server",
+    "camouflage",
+    "username",
+)
+
+AMNEZIA_REDUNDANT_KEYS = (
+    "endpoint",
+    "address",
+    "dns",
+    "allowed_ips",
+    "obfuscation",
+    "config_path",
+)
+
+GLOBAL_SENSITIVE_KEYS = (
+    "openconnect_password",
+    "openconnect_server",
+    "openconnect_camouflage_secret",
+    "openconnect_user",
+    "amnezia_conf_path",
+)
+
+
 def _decrypt_profile_secrets(profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Decrypts sensitive fields in-place in profile dictionary."""
-    if "config_content" in profile and is_encrypted(profile["config_content"]):
-        profile["config_content"] = decrypt_secret(profile["config_content"])
-    if "password" in profile and is_encrypted(profile["password"]):
-        profile["password"] = decrypt_secret(profile["password"])
-    if "private_key" in profile and is_encrypted(profile["private_key"]):
-        profile["private_key"] = decrypt_secret(profile["private_key"])
+    """Decrypts sensitive fields in-place in profile dictionary and inflates parsed memory fields."""
+    for field in PROFILE_SECRET_KEYS:
+        if field in profile and profile[field] and is_encrypted(str(profile[field])):
+            profile[field] = decrypt_secret(str(profile[field]))
+
+    if profile.get("proto") == "amnezia":
+        content = profile.get("config_content", "")
+        if content and isinstance(content, str):
+            try:
+                from core.amnezia import AmneziaWGLauncher
+                parsed = AmneziaWGLauncher.parse_config_text(content)
+                if parsed.get("endpoint"):
+                    profile["endpoint"] = parsed["endpoint"]
+                if parsed.get("address"):
+                    profile["address"] = parsed["address"]
+                if parsed.get("dns"):
+                    profile["dns"] = parsed["dns"]
+                if parsed.get("allowed_ips"):
+                    profile["allowed_ips"] = parsed["allowed_ips"]
+                if parsed.get("obfuscation"):
+                    profile["obfuscation"] = parsed["obfuscation"]
+            except Exception:
+                pass
     return profile
 
 
 def _encrypt_profile_secrets(profile: Dict[str, Any]) -> Dict[str, Any]:
-    """Returns a copy of profile with sensitive fields securely encrypted."""
+    """Returns a copy of profile with sensitive fields securely encrypted and disk redundancy stripped."""
     p_copy = copy.deepcopy(profile)
-    if "config_content" in p_copy and p_copy["config_content"]:
-        p_copy["config_content"] = encrypt_secret(p_copy["config_content"])
-    if "password" in p_copy and p_copy["password"]:
-        p_copy["password"] = encrypt_secret(p_copy["password"])
-    if "private_key" in p_copy and p_copy["private_key"]:
-        p_copy["private_key"] = encrypt_secret(p_copy["private_key"])
+
+    # For Amnezia: if config_content is missing, attempt reading from config_path if valid
+    if p_copy.get("proto") == "amnezia":
+        if not p_copy.get("config_content") and p_copy.get("config_path"):
+            try:
+                if os.path.isfile(p_copy["config_path"]):
+                    with open(p_copy["config_path"], "r", encoding="utf-8", errors="ignore") as f:
+                        p_copy["config_content"] = f.read().strip()
+            except Exception:
+                pass
+
+    # Encrypt all sensitive fields
+    for field in PROFILE_SECRET_KEYS:
+        if field in p_copy and p_copy[field]:
+            p_copy[field] = encrypt_secret(str(p_copy[field]))
+
+    # For Amnezia profiles, strip redundant parameters from disk that are already sealed in config_content
+    if p_copy.get("proto") == "amnezia":
+        for redundant in AMNEZIA_REDUNDANT_KEYS:
+            p_copy.pop(redundant, None)
+
     return p_copy
 
 
@@ -115,9 +173,33 @@ class ConfigStore:
     def __init__(self):
         self.file_path = get_config_path()
         self._is_cleared = False
+        self._needs_save = False
         self.data: Dict[str, Any] = self._load()
         self._ensure_profiles()
         self._migrate_amnezia_profiles()
+        self._prune_backups()
+        if self._needs_save:
+            self.save()
+
+    def _prune_backups(self) -> None:
+        """Prunes old settings backups, keeping only the 3 most recent files."""
+        try:
+            backup_dir = os.path.join(get_config_dir(), "backups")
+            if os.path.isdir(backup_dir):
+                backup_files = [
+                    os.path.join(backup_dir, f)
+                    for f in os.listdir(backup_dir)
+                    if f.startswith("settings_pre_upgrade_") and f.endswith(".json")
+                ]
+                backup_files.sort(key=os.path.getmtime)
+                while len(backup_files) > 3:
+                    old_bk = backup_files.pop(0)
+                    try:
+                        os.remove(old_bk)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _load(self) -> Dict[str, Any]:
         data = {}
@@ -131,41 +213,67 @@ class ConfigStore:
         if not isinstance(data, dict):
             data = {}
 
-        # Decrypt profiles in memory
+        needs_save = False
+
+        # Decrypt profiles in memory & detect whether disk format needs hardening
         profiles = data.get("profiles", [])
         if isinstance(profiles, list):
             for p in profiles:
                 if isinstance(p, dict):
+                    proto = p.get("proto")
+                    if proto == "amnezia":
+                        for red in AMNEZIA_REDUNDANT_KEYS:
+                            if red in p:
+                                needs_save = True
+                                break
+                        if "config_content" in p and p["config_content"] and not is_encrypted(str(p["config_content"])):
+                            needs_save = True
+                    elif proto == "openconnect":
+                        for field in ("server", "camouflage", "username", "password"):
+                            if field in p and p[field] and not is_encrypted(str(p[field])):
+                                needs_save = True
+                                break
+
                     _decrypt_profile_secrets(p)
 
-        # Decrypt global openconnect_password
-        if "openconnect_password" in data:
-            val = data["openconnect_password"]
-            if is_encrypted(val):
-                data["openconnect_password"] = decrypt_secret(val)
-            else:
-                try:
-                    data["openconnect_password"] = base64.b64decode(val.encode("utf-8")).decode("utf-8")
-                except Exception:
-                    pass
+        # Decrypt global sensitive fields
+        for key in GLOBAL_SENSITIVE_KEYS:
+            if key in data and data[key]:
+                val = str(data[key])
+                if is_encrypted(val):
+                    data[key] = decrypt_secret(val)
+                else:
+                    needs_save = True
+                    if key == "openconnect_password":
+                        try:
+                            data["openconnect_password"] = base64.b64decode(val.encode("utf-8")).decode("utf-8")
+                        except Exception:
+                            pass
 
+        self._needs_save = needs_save
         return data
 
     def save(self) -> None:
         if self._is_cleared:
             return
         try:
+            from utils.version import APP_VERSION
+
             # Create a protected copy for saving to disk
             disk_data = copy.deepcopy(self.data)
+            disk_data["version"] = APP_VERSION
+
             profiles = disk_data.get("profiles", [])
             if isinstance(profiles, list):
                 disk_data["profiles"] = [_encrypt_profile_secrets(p) for p in profiles if isinstance(p, dict)]
 
-            if "openconnect_password" in disk_data and disk_data["openconnect_password"]:
-                disk_data["openconnect_password"] = encrypt_secret(disk_data["openconnect_password"])
+            for key in GLOBAL_SENSITIVE_KEYS:
+                if key in disk_data and disk_data[key]:
+                    disk_data[key] = encrypt_secret(str(disk_data[key]))
 
             with open(self.file_path, "w", encoding="utf-8") as f:
                 json.dump(disk_data, f, indent=2, ensure_ascii=False)
+            self._needs_save = False
         except Exception as e:
             print(f"Failed to save settings: {e}")
 
