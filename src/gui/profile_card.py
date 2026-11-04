@@ -1,8 +1,9 @@
 import os
-from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, Tuple
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QWidget,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect, QSizePolicy, QMessageBox
 )
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt, Signal
@@ -129,6 +130,87 @@ QFrame#vpn_profile_card:hover {
 }
 """
 
+CARD_STYLE_FROZEN = """
+QFrame#vpn_profile_card {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #091929, stop:1 #06111d);
+    border: 1px solid rgba(56, 189, 248, 0.40);
+    border-top: 1px solid rgba(186, 230, 253, 0.75);
+    border-radius: 12px;
+}
+QFrame#vpn_profile_card:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0e2338, stop:1 #081726);
+    border: 1px solid rgba(56, 189, 248, 0.65);
+    border-top: 1px solid rgba(186, 230, 253, 0.95);
+    border-radius: 12px;
+}
+"""
+
+FROZEN_BTN_STYLE = """
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(14, 165, 233, 0.18), stop:1 rgba(2, 132, 199, 0.18));
+    color: #7dd3fc;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(56, 189, 248, 0.50);
+    border-bottom: 2px solid rgba(2, 132, 199, 0.70);
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(14, 165, 233, 0.32), stop:1 rgba(2, 132, 199, 0.32));
+    color: #e0f2fe;
+    border: 1px solid rgba(125, 211, 252, 0.75);
+    border-bottom: 2px solid #0284c7;
+}
+QPushButton:pressed {
+    background-color: rgba(2, 132, 199, 0.40);
+}
+"""
+
+BLOCKED_BTN_STYLE = """
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(220, 38, 38, 0.18), stop:1 rgba(185, 28, 28, 0.18));
+    color: #fca5a5;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.50);
+    border-bottom: 2px solid rgba(185, 28, 28, 0.70);
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(220, 38, 38, 0.30), stop:1 rgba(185, 28, 28, 0.30));
+    color: #ffffff;
+    border: 1px solid rgba(248, 113, 113, 0.75);
+    border-bottom: 2px solid #dc2626;
+}
+QPushButton:pressed {
+    background-color: rgba(185, 28, 28, 0.40);
+}
+"""
+
+EXPIRED_BTN_STYLE = """
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(217, 119, 6, 0.18), stop:1 rgba(180, 83, 9, 0.18));
+    color: #fde047;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(245, 158, 11, 0.50);
+    border-bottom: 2px solid rgba(180, 83, 9, 0.70);
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(217, 119, 6, 0.30), stop:1 rgba(180, 83, 9, 0.30));
+    color: #ffffff;
+    border: 1px solid rgba(251, 191, 36, 0.75);
+    border-bottom: 2px solid #d97706;
+}
+QPushButton:pressed {
+    background-color: rgba(180, 83, 9, 0.40);
+}
+"""
+
 
 class VPNProfileCard(QFrame):
     """
@@ -172,6 +254,47 @@ class VPNProfileCard(QFrame):
         super().leaveEvent(event)
         self._apply_shadow(hover=False)
 
+    def get_frozen_status(self) -> Tuple[bool, str]:
+        """
+        Проверяет, заморожен/заблокирован ли данный профиль по подписке.
+        Возвращает кортеж: (is_frozen: bool, reason: str)
+        где reason: 'blocked', 'expired', 'frozen' или ''.
+        """
+        raw_name = str(self.profile.get("name", "")).strip()
+        raw_name_lower = raw_name.lower()
+        is_sub = (
+            bool(self.profile.get("is_subscription"))
+            or self.profile.get("sub_id") is not None
+            or raw_name_lower.endswith("-sub")
+            or raw_name.endswith("-SUB")
+            or " -sub" in raw_name_lower
+            or " -SUB" in raw_name
+        )
+        if not is_sub:
+            return (False, "")
+
+        status = str(self.profile.get("subscription_status") or settings.get("subscription_status") or "").strip().lower()
+        if status in ("blocked", "banned"):
+            return (True, "blocked")
+        if status in ("expired",):
+            return (True, "expired")
+        if status in ("frozen", "suspended"):
+            return (True, "frozen")
+
+        expires_at = self.profile.get("expires_at") or settings.get("subscription_expires_at", "")
+        if expires_at:
+            try:
+                dt_clean = str(expires_at).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(dt_clean)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > dt:
+                    return (True, "expired")
+            except Exception:
+                pass
+
+        return (False, "")
+
     def _apply_shadow(self, hover: bool = False):
         if not hasattr(self, "shadow_effect"):
             return
@@ -207,15 +330,27 @@ class VPNProfileCard(QFrame):
                 self.shadow_effect.setBlurRadius(18)
                 self.shadow_effect.setYOffset(3)
         else:
-            # Не активно: глубокая тень парящей карточки
-            if hover:
-                self.shadow_effect.setColor(QColor(0, 0, 0, 160))
-                self.shadow_effect.setBlurRadius(22)
-                self.shadow_effect.setYOffset(5)
+            is_frozen, _ = self.get_frozen_status()
+            if is_frozen:
+                # Эффект ледяной ауры заморозки (Icy Frost Glow)
+                if hover:
+                    self.shadow_effect.setColor(QColor(56, 189, 248, 90))
+                    self.shadow_effect.setBlurRadius(24)
+                    self.shadow_effect.setYOffset(4)
+                else:
+                    self.shadow_effect.setColor(QColor(56, 189, 248, 60))
+                    self.shadow_effect.setBlurRadius(18)
+                    self.shadow_effect.setYOffset(3)
             else:
-                self.shadow_effect.setColor(QColor(0, 0, 0, 120))
-                self.shadow_effect.setBlurRadius(16)
-                self.shadow_effect.setYOffset(3)
+                # Не активно: глубокая тень парящей карточки
+                if hover:
+                    self.shadow_effect.setColor(QColor(0, 0, 0, 160))
+                    self.shadow_effect.setBlurRadius(22)
+                    self.shadow_effect.setYOffset(5)
+                else:
+                    self.shadow_effect.setColor(QColor(0, 0, 0, 120))
+                    self.shadow_effect.setBlurRadius(16)
+                    self.shadow_effect.setYOffset(3)
 
     def _init_ui(self):
         card_layout = QVBoxLayout(self)
@@ -294,39 +429,80 @@ class VPNProfileCard(QFrame):
             sub_badge_layout = QHBoxLayout(sub_badge)
             sub_badge_layout.setContentsMargins(6, 2, 8, 2)
             sub_badge_layout.setSpacing(5)
-            sub_badge.setStyleSheet("""
-                QFrame#sub_badge {
-                    background-color: rgba(168, 85, 247, 0.15);
-                    border: 1px solid rgba(168, 85, 247, 0.45);
-                    border-radius: 6px;
-                }
-            """)
+
             lbl_sub_icon = QLabel()
             lbl_sub_icon.setFixedSize(14, 14)
             lbl_sub_icon.setScaledContents(True)
-            sub_pix = get_subscription_pixmap(14, 14)
-            if not sub_pix.isNull():
-                lbl_sub_icon.setPixmap(sub_pix)
-            else:
-                lbl_sub_icon.setText("🔑")
             lbl_sub_icon.setStyleSheet("background: transparent; border: none; padding: 0;")
 
-            lbl_sub_text = QLabel("sub")
-            lbl_sub_text.setStyleSheet("color: #c084fc; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
-            sub_badge_layout.addWidget(lbl_sub_icon)
-            sub_badge_layout.addWidget(lbl_sub_text)
+            lbl_sub_text = QLabel()
 
             expires_at = self.profile.get("expires_at") or settings.get("subscription_expires_at", "")
             exp_display = "Бессрочно"
             if expires_at:
                 try:
-                    from datetime import datetime
                     dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
                     exp_display = dt.strftime("%d.%m.%Y")
                 except Exception:
                     exp_display = str(expires_at)
 
-            sub_badge.setToolTip(f"Подключение получено по подписке (BobrDobr VPN)\nИстекает: {exp_display}")
+            is_frozen, frozen_reason = self.get_frozen_status()
+            if is_frozen:
+                if frozen_reason == "blocked":
+                    sub_badge.setStyleSheet("""
+                        QFrame#sub_badge {
+                            background-color: rgba(220, 38, 38, 0.20);
+                            border: 1px solid rgba(239, 68, 68, 0.60);
+                            border-radius: 6px;
+                        }
+                    """)
+                    lbl_sub_icon.setText("⛔")
+                    lbl_sub_text.setText("заблокировано")
+                    lbl_sub_text.setStyleSheet("color: #fca5a5; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+                    sub_badge.setToolTip("⛔ Доступ заблокирован администратором")
+                elif frozen_reason == "expired":
+                    sub_badge.setStyleSheet("""
+                        QFrame#sub_badge {
+                            background-color: rgba(217, 119, 6, 0.20);
+                            border: 1px solid rgba(245, 158, 11, 0.60);
+                            border-radius: 6px;
+                        }
+                    """)
+                    lbl_sub_icon.setText("⌛")
+                    lbl_sub_text.setText("истекла")
+                    lbl_sub_text.setStyleSheet("color: #fde047; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+                    sub_badge.setToolTip(f"⌛ Срок действия подписки истёк ({exp_display})")
+                else:
+                    sub_badge.setStyleSheet("""
+                        QFrame#sub_badge {
+                            background-color: rgba(14, 165, 233, 0.20);
+                            border: 1px solid rgba(56, 189, 248, 0.60);
+                            border-radius: 6px;
+                        }
+                    """)
+                    lbl_sub_icon.setText("❄")
+                    lbl_sub_text.setText("заморожено")
+                    lbl_sub_text.setStyleSheet("color: #7dd3fc; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+                    sub_badge.setToolTip("❄ Подписка временно заморожена")
+            else:
+                sub_badge.setStyleSheet("""
+                    QFrame#sub_badge {
+                        background-color: rgba(168, 85, 247, 0.15);
+                        border: 1px solid rgba(168, 85, 247, 0.45);
+                        border-radius: 6px;
+                    }
+                """)
+                sub_pix = get_subscription_pixmap(14, 14)
+                if not sub_pix.isNull():
+                    lbl_sub_icon.setPixmap(sub_pix)
+                else:
+                    lbl_sub_icon.setText("🔑")
+                lbl_sub_text.setText("sub")
+                lbl_sub_text.setStyleSheet("color: #c084fc; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+                sub_badge.setToolTip(f"Подключение получено по подписке (BobrDobr VPN)\nИстекает: {exp_display}")
+
+            sub_badge_layout.addWidget(lbl_sub_icon)
+            sub_badge_layout.addWidget(lbl_sub_text)
             top_row.addWidget(sub_badge)
 
         # Название профиля (для подписки гарантируем суффикс -sub)
@@ -435,6 +611,32 @@ class VPNProfileCard(QFrame):
             QApplication.processEvents()
             self.disconnect_requested.emit(self.profile_id)
         elif self.current_state in (VPNState.DISCONNECTED, VPNState.ERROR):
+            is_frozen, reason = self.get_frozen_status()
+            if is_frozen:
+                username = settings.get("subscription_username") or self.profile.get("username") or "пользователя"
+                if reason == "blocked":
+                    QMessageBox.warning(
+                        self,
+                        "Доступ заблокирован",
+                        f"Пользователь подписки «{username}» заблокирован администратором.\n\n"
+                        "Подключение к этой плотине недоступно. Для восстановления доступа обратитесь к администратору BobrDobr VPN."
+                    )
+                elif reason == "expired":
+                    QMessageBox.warning(
+                        self,
+                        "Срок подписки истёк",
+                        f"Срок действия подписки пользователя «{username}» истёк.\n\n"
+                        "Для восстановления доступа продлите подписку в личном кабинете BobrDobr VPN, затем обновите её."
+                    )
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Подписка заморожена",
+                        f"Действие подписки пользователя «{username}» приостановлено.\n\n"
+                        "Для разморозки обратитесь к администратору или проверьте состояние в личном кабинете."
+                    )
+                return
+
             # Мгновенная визуальная реакция на клик подключения (0 мс)
             self.update_state(
                 VPNState.CONNECTING,
@@ -460,6 +662,8 @@ class VPNProfileCard(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
 
+        is_frozen, frozen_reason = self.get_frozen_status()
+
         # Принудительно устанавливаем локальный стиль с градиентом и спекулярной гранью
         if state == VPNState.CONNECTED:
             self.setStyleSheet(CARD_STYLE_CONNECTED)
@@ -467,6 +671,8 @@ class VPNProfileCard(QFrame):
             self.setStyleSheet(CARD_STYLE_CONNECTING)
         elif state == VPNState.ERROR:
             self.setStyleSheet(CARD_STYLE_ERROR)
+        elif is_frozen:
+            self.setStyleSheet(CARD_STYLE_FROZEN)
         else:
             self.setStyleSheet(CARD_STYLE_DISCONNECTED)
 
@@ -532,6 +738,49 @@ class VPNProfileCard(QFrame):
 
         else:  # DISCONNECTED or ERROR
             error_mode = (state == VPNState.ERROR)
+
+            if is_frozen and not error_mode:
+                if frozen_reason == "blocked":
+                    status_text = custom_status or "⛔ Заблокировано"
+                    status_color = "#fca5a5"
+                    status_bg = "rgba(220, 38, 38, 0.16)"
+                    status_border = "rgba(239, 68, 68, 0.45)"
+                    action_text = custom_btn or "⛔ Заблокировано"
+                    btn_style = BLOCKED_BTN_STYLE
+                elif frozen_reason == "expired":
+                    status_text = custom_status or "⌛ Срок истёк"
+                    status_color = "#fde047"
+                    status_bg = "rgba(217, 119, 6, 0.16)"
+                    status_border = "rgba(245, 158, 11, 0.45)"
+                    action_text = custom_btn or "⌛ Истекла"
+                    btn_style = EXPIRED_BTN_STYLE
+                else:
+                    status_text = custom_status or "❄ Заморожено"
+                    status_color = "#7dd3fc"
+                    status_bg = "rgba(14, 165, 233, 0.16)"
+                    status_border = "rgba(56, 189, 248, 0.45)"
+                    action_text = custom_btn or "❄ Заморожено"
+                    btn_style = FROZEN_BTN_STYLE
+
+                self.lbl_status.setText(status_text)
+                self.lbl_status.setStyleSheet(f"""
+                    color: {status_color};
+                    background-color: {status_bg};
+                    border: 1px solid {status_border};
+                    border-radius: 12px;
+                    padding: 4px 12px;
+                    font-weight: 700;
+                    font-size: 11px;
+                """)
+                self.btn_toggle.setText(action_text)
+                self.btn_toggle.setEnabled(True)
+                self.btn_toggle.setObjectName("btn_frozen")
+                self.btn_toggle.setStyleSheet(btn_style)
+                self.btn_toggle.style().unpolish(self.btn_toggle)
+                self.btn_toggle.style().polish(self.btn_toggle)
+                self.btn_delete.setEnabled(True)
+                return
+
             status_text = custom_status or ("⚠ Ошибка" if error_mode else "○ Не активно")
             status_color = "#f87171" if error_mode else "#94a3b8"
             status_bg = "rgba(239, 68, 68, 0.12)" if error_mode else "rgba(255, 255, 255, 0.04)"

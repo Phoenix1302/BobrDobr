@@ -144,6 +144,76 @@ class TestSubscriptionUI(unittest.TestCase):
             "https://bobr.netphoenix.ru/sub/tok123"
         )
 
+    def test_frozen_subscription_card_state(self):
+        from gui.profile_card import VPNProfileCard
+        from utils.config_store import settings
+
+        class DummyCard:
+            def __init__(self, profile):
+                self.profile = profile
+            get_frozen_status = VPNProfileCard.get_frozen_status
+
+        # 1. Blocked profile via global subscription_status
+        p_blocked = {"name": "Egor_awg1-sub", "proto": "amnezia", "is_subscription": True}
+        with patch.object(settings, "get", side_effect=lambda k, d="": "blocked" if k == "subscription_status" else d):
+            card = DummyCard(p_blocked)
+            is_frozen, reason = card.get_frozen_status()
+            self.assertTrue(is_frozen)
+            self.assertEqual(reason, "blocked")
+
+        # 2. Expired profile via past ISO date
+        p_expired = {"name": "Egor_oc1-sub", "proto": "openconnect", "is_subscription": True, "expires_at": "2020-01-01T00:00:00"}
+        with patch.object(settings, "get", side_effect=lambda k, d="": "active" if k == "subscription_status" else d):
+            card = DummyCard(p_expired)
+            is_frozen, reason = card.get_frozen_status()
+            self.assertTrue(is_frozen)
+            self.assertEqual(reason, "expired")
+
+        # 3. Active valid profile (not frozen)
+        p_active = {"name": "Egor_awg1-sub", "proto": "amnezia", "is_subscription": True, "expires_at": "2030-01-01T00:00:00"}
+        with patch.object(settings, "get", side_effect=lambda k, d="": "active" if k == "subscription_status" else d):
+            card = DummyCard(p_active)
+            is_frozen, reason = card.get_frozen_status()
+            self.assertFalse(is_frozen)
+            self.assertEqual(reason, "")
+
+        # 4. Manual profile without subscription (never frozen)
+        p_manual = {"name": "WorkVPN", "proto": "amnezia"}
+        with patch.object(settings, "get", side_effect=lambda k, d="": "blocked" if k == "subscription_status" else d):
+            card = DummyCard(p_manual)
+            is_frozen, reason = card.get_frozen_status()
+            self.assertFalse(is_frozen)
+            self.assertEqual(reason, "")
+
+    def test_subscription_info_expiring_soon_calculation(self):
+        from utils.subscription_manager import get_subscription_info
+        from utils.config_store import settings
+        from datetime import datetime, timezone, timedelta
+
+        # 2 days remaining -> expiring soon
+        future_2d = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S")
+        with patch.object(settings, "get", side_effect=lambda k, d="": {
+            "subscription_url": "https://bobr.netphoenix.ru/sub/tok",
+            "subscription_status": "active",
+            "subscription_expires_at": future_2d
+        }.get(k, d)):
+            info = get_subscription_info()
+            self.assertTrue(info["is_expiring_soon"])
+            self.assertFalse(info["is_expired"])
+            self.assertIn(info["days_left"], (1, 2))
+
+        # 20 days remaining -> not expiring soon
+        future_20d = (datetime.now(timezone.utc) + timedelta(days=20)).strftime("%Y-%m-%dT%H:%M:%S")
+        with patch.object(settings, "get", side_effect=lambda k, d="": {
+            "subscription_url": "https://bobr.netphoenix.ru/sub/tok",
+            "subscription_status": "active",
+            "subscription_expires_at": future_20d
+        }.get(k, d)):
+            info = get_subscription_info()
+            self.assertFalse(info["is_expiring_soon"])
+            self.assertFalse(info["is_expired"])
+            self.assertGreaterEqual(info["days_left"], 19)
+
 
 if __name__ == "__main__":
     unittest.main()

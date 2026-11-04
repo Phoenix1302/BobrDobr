@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+from datetime import datetime
 from typing import Dict, Optional
 
 # Ensure src/ directory is on sys.path
@@ -484,6 +485,56 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.lbl_admin)
         main_layout.addLayout(header_layout)
 
+        # 1.5 Информационный баннер подписки (заблокирована, истекла, скорое окончание)
+        self._banner_dismissed = False
+        self.announcement_banner = QFrame()
+        self.announcement_banner.setObjectName("announcement_banner")
+        self.announcement_banner.setVisible(False)
+        banner_layout = QHBoxLayout(self.announcement_banner)
+        banner_layout.setContentsMargins(14, 10, 14, 10)
+        banner_layout.setSpacing(12)
+
+        self.lbl_banner_icon = QLabel("📢")
+        self.lbl_banner_icon.setStyleSheet("font-size: 18px; background: transparent; border: none;")
+        banner_layout.addWidget(self.lbl_banner_icon)
+
+        self.lbl_banner_text = QLabel()
+        self.lbl_banner_text.setTextFormat(Qt.RichText)
+        self.lbl_banner_text.setWordWrap(True)
+        self.lbl_banner_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.lbl_banner_text.setStyleSheet("font-size: 12px; line-height: 1.4; background: transparent; border: none;")
+        banner_layout.addWidget(self.lbl_banner_text, stretch=1)
+
+        self.btn_banner_action = QPushButton("✨ Подписка")
+        self.btn_banner_action.setObjectName("btn_banner_action")
+        self.btn_banner_action.setCursor(Qt.PointingHandCursor)
+        self.btn_banner_action.setFixedHeight(28)
+        self.btn_banner_action.clicked.connect(self._on_manage_subscription_clicked)
+        banner_layout.addWidget(self.btn_banner_action)
+
+        self.btn_banner_close = QPushButton("✕")
+        self.btn_banner_close.setObjectName("btn_banner_close")
+        self.btn_banner_close.setCursor(Qt.PointingHandCursor)
+        self.btn_banner_close.setFixedSize(24, 24)
+        self.btn_banner_close.setStyleSheet("""
+            QPushButton#btn_banner_close {
+                background: transparent;
+                color: #94a3b8;
+                border: none;
+                font-weight: 700;
+                font-size: 13px;
+                border-radius: 12px;
+            }
+            QPushButton#btn_banner_close:hover {
+                background: rgba(255, 255, 255, 0.10);
+                color: #ffffff;
+            }
+        """)
+        self.btn_banner_close.clicked.connect(self._on_dismiss_banner_clicked)
+        banner_layout.addWidget(self.btn_banner_close)
+
+        main_layout.addWidget(self.announcement_banner)
+
         # 2. Панель действий со списком подключений
         action_bar = QHBoxLayout()
         action_bar.setSpacing(10)
@@ -741,8 +792,149 @@ class MainWindow(QMainWindow):
         self.profiles_layout.addStretch()
         self._update_subscription_ui()
 
+    def _on_dismiss_banner_clicked(self):
+        self._banner_dismissed = True
+        self.announcement_banner.setVisible(False)
+
+    def _update_subscription_banner(self):
+        """
+        Проверяет состояние подписки и отображает объявление при старте или после синхронизации:
+        1. Блокировка/бан: пользователь заблокирован администратором.
+        2. Истечение срока: срок подписки истёк.
+        3. Предупреждение: срок действия заканчивается в ближайшие дни (<= 3 дня).
+        """
+        if not hasattr(self, "announcement_banner"):
+            return
+
+        sub_info = SubscriptionManager.get_info()
+        url = sub_info.get("url", "")
+        profiles_count = sub_info.get("profiles_count", 0)
+
+        # Если подписка не подключена и нет подписных профилей — баннер не нужен
+        if not url and profiles_count == 0:
+            self.announcement_banner.setVisible(False)
+            return
+
+        status = str(sub_info.get("status", "")).strip().lower()
+        username = sub_info.get("username", "") or "пользователя"
+        expires_at = sub_info.get("expires_at", "")
+        days_left = sub_info.get("days_left")
+        is_expired = sub_info.get("is_expired", False)
+        is_expiring_soon = sub_info.get("is_expiring_soon", False)
+
+        exp_display = "не указан"
+        if expires_at:
+            try:
+                dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                exp_display = dt.strftime("%d.%m.%Y")
+            except Exception:
+                exp_display = str(expires_at)
+
+        if status in ("blocked", "banned"):
+            self.lbl_banner_icon.setText("⛔")
+            self.lbl_banner_text.setText(
+                f"<span style='color: #fca5a5; font-weight: 800; font-size: 13px;'>Доступ заблокирован:</span> "
+                f"<span style='color: #fecaca;'>Пользователь подписки «<b>{username}</b>» заблокирован администратором. "
+                f"Обратитесь к администратору для разблокировки.</span>"
+            )
+            self.btn_banner_action.setText("✨ Подробнее")
+            self.btn_banner_action.setStyleSheet("""
+                QPushButton#btn_banner_action {
+                    background: rgba(220, 38, 38, 0.25);
+                    color: #fca5a5;
+                    border: 1px solid rgba(239, 68, 68, 0.50);
+                    border-radius: 6px;
+                    padding: 4px 12px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                QPushButton#btn_banner_action:hover {
+                    background: rgba(220, 38, 38, 0.40);
+                    color: #ffffff;
+                }
+            """)
+            self.announcement_banner.setStyleSheet("""
+                QFrame#announcement_banner {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(127, 29, 29, 0.45), stop:1 rgba(70, 15, 15, 0.45));
+                    border: 1px solid rgba(239, 68, 68, 0.55);
+                    border-top: 1px solid rgba(248, 113, 113, 0.85);
+                    border-radius: 10px;
+                }
+            """)
+            self.announcement_banner.setVisible(True)
+
+        elif is_expired or status == "expired":
+            self.lbl_banner_icon.setText("⌛")
+            self.lbl_banner_text.setText(
+                f"<span style='color: #fdba74; font-weight: 800; font-size: 13px;'>Подписка истекла:</span> "
+                f"<span style='color: #fed7aa;'>Срок действия подписки пользователя «<b>{username}</b>» истёк ({exp_display}). "
+                f"Необходимо продлить доступ в личном кабинете.</span>"
+            )
+            self.btn_banner_action.setText("✨ Продлить")
+            self.btn_banner_action.setStyleSheet("""
+                QPushButton#btn_banner_action {
+                    background: rgba(234, 88, 12, 0.25);
+                    color: #fdba74;
+                    border: 1px solid rgba(249, 115, 22, 0.50);
+                    border-radius: 6px;
+                    padding: 4px 12px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                QPushButton#btn_banner_action:hover {
+                    background: rgba(234, 88, 12, 0.40);
+                    color: #ffffff;
+                }
+            """)
+            self.announcement_banner.setStyleSheet("""
+                QFrame#announcement_banner {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(154, 52, 18, 0.40), stop:1 rgba(90, 30, 10, 0.40));
+                    border: 1px solid rgba(249, 115, 22, 0.55);
+                    border-top: 1px solid rgba(251, 146, 60, 0.85);
+                    border-radius: 10px;
+                }
+            """)
+            self.announcement_banner.setVisible(True)
+
+        elif is_expiring_soon and not self._banner_dismissed:
+            self.lbl_banner_icon.setText("⏳")
+            days_str = "сегодня" if days_left == 0 else (f"через {days_left} дн." if days_left else "скоро")
+            self.lbl_banner_text.setText(
+                f"<span style='color: #fde047; font-weight: 800; font-size: 13px;'>Скоро окончание подписки:</span> "
+                f"<span style='color: #fef08a;'>Срок действия подписки «<b>{username}</b>» заканчивается {days_str} ({exp_display}). "
+                f"Продлите доступ в личном кабинете.</span>"
+            )
+            self.btn_banner_action.setText("✨ Подробнее")
+            self.btn_banner_action.setStyleSheet("""
+                QPushButton#btn_banner_action {
+                    background: rgba(217, 119, 6, 0.25);
+                    color: #fde047;
+                    border: 1px solid rgba(245, 158, 11, 0.50);
+                    border-radius: 6px;
+                    padding: 4px 12px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+                QPushButton#btn_banner_action:hover {
+                    background: rgba(217, 119, 6, 0.40);
+                    color: #ffffff;
+                }
+            """)
+            self.announcement_banner.setStyleSheet("""
+                QFrame#announcement_banner {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(146, 64, 14, 0.35), stop:1 rgba(80, 35, 10, 0.35));
+                    border: 1px solid rgba(245, 158, 11, 0.50);
+                    border-top: 1px solid rgba(251, 191, 36, 0.80);
+                    border-radius: 10px;
+                }
+            """)
+            self.announcement_banner.setVisible(True)
+
+        else:
+            self.announcement_banner.setVisible(False)
+
     def _update_subscription_ui(self):
-        """Показывает кнопку меню подписки, если есть URL подписки или подписные профили."""
+        """Показывает кнопку меню подписки и обновляет информационный баннер."""
         sub_url = (settings.get("subscription_url") or "").strip()
         has_sub_profiles = any(
             p.get("is_subscription") or p.get("sub_id") is not None
@@ -750,11 +942,15 @@ class MainWindow(QMainWindow):
         )
         if hasattr(self, "btn_subscription"):
             self.btn_subscription.setVisible(bool(sub_url or has_sub_profiles))
+        self._update_subscription_banner()
 
     def _on_manage_subscription_clicked(self):
         """Открывает расширенный диалог управления подпиской BobrDobr."""
         dlg = SubscriptionManageDialog(parent=self)
         dlg.exec()
+        self._update_subscription_ui()
+        self._render_profiles()
+        self._update_subscription_banner()
 
     def _restore_status_bar_idle(self):
         if not self.active_profile_id:
@@ -773,9 +969,10 @@ class MainWindow(QMainWindow):
         self._sub_sync_thread.start()
 
     def _on_auto_sync_finished(self, ok: bool, msg: str, profiles: list):
+        self._render_profiles()
+        self._update_subscription_ui()
+        self._update_subscription_banner()
         if ok:
-            self._render_profiles()
-            self._update_subscription_ui()
             if hasattr(self, "log_viewer"):
                 self.log_viewer.append_log(f"[Подписка] Фоновая синхронизация выполнена успешно: обновлено профилей: {len(profiles)}.")
         else:

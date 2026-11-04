@@ -23,7 +23,9 @@ from utils.conf_parser import parse_amnezia_config_text
 
 class SubscriptionError(Exception):
     """Исключение, возникающее при ошибках загрузки, валидации или обработки подписки."""
-    pass
+    def __init__(self, message: str, status: Optional[str] = None):
+        super().__init__(message)
+        self.status = status
 
 
 def normalize_subscription_url(url: str) -> str:
@@ -116,10 +118,10 @@ def fetch_subscription(url: str, timeout: int = 15) -> Dict[str, Any]:
 
                 # Проверка статуса подписки в теле ответа
                 body_status = str(data.get("status", "")).strip().lower()
-                if body_status == "blocked":
-                    raise SubscriptionError("Доступ заблокирован администратором.")
+                if body_status in ("blocked", "banned"):
+                    raise SubscriptionError("Доступ заблокирован администратором.", status="blocked")
                 if body_status == "expired":
-                    raise SubscriptionError("Срок действия подписки истек. Продлите доступ в личном кабинете.")
+                    raise SubscriptionError("Срок действия подписки истек. Продлите доступ в личном кабинете.", status="expired")
 
                 # Извлечение метрик и срока действия из заголовка Subscription-Userinfo
                 if userinfo_header:
@@ -171,12 +173,12 @@ def fetch_subscription(url: str, timeout: int = 15) -> Dict[str, Any]:
                     "Токен подписки недействителен или был отозван. Получите новую ссылку в личном кабинете."
                 )
             elif e.code == 403:
-                if "block" in search_text:
-                    raise SubscriptionError("Доступ заблокирован администратором.")
-                elif "expire" in search_text:
-                    raise SubscriptionError("Срок действия подписки истек. Продлите доступ в личном кабинете.")
+                if "block" in search_text or "заблокирован" in search_text:
+                    raise SubscriptionError("Доступ заблокирован администратором.", status="blocked")
+                elif "expire" in search_text or "истек" in search_text or "истёк" in search_text:
+                    raise SubscriptionError("Срок действия подписки истек. Продлите доступ в личном кабинете.", status="expired")
                 else:
-                    raise SubscriptionError("Доступ к подписке запрещен. Проверьте статус в личном кабинете.")
+                    raise SubscriptionError("Доступ к подписке запрещен. Проверьте статус в личном кабинете.", status="blocked")
             elif e.code == 404:
                 raise SubscriptionError("Сервер подписки или профиль не найден (404). Проверьте правильность ссылки.")
             elif 500 <= e.code < 600:
@@ -320,6 +322,19 @@ def sync_subscription(url: str = "") -> Tuple[bool, str, List[Dict[str, Any]]]:
     try:
         data = fetch_subscription(target_url)
     except SubscriptionError as se:
+        # Если сервер вернул информацию о блокировке или окончании срока действия,
+        # фиксируем статус в настройках для активации эффекта заморозки и баннеров
+        if se.status:
+            settings.data["subscription_status"] = se.status
+            settings.save()
+        else:
+            err_lower = str(se).lower()
+            if "заблокирован" in err_lower or "block" in err_lower:
+                settings.data["subscription_status"] = "blocked"
+                settings.save()
+            elif "истек" in err_lower or "истёк" in err_lower or "expire" in err_lower:
+                settings.data["subscription_status"] = "expired"
+                settings.save()
         return (False, str(se), [])
     except Exception as e:
         return (False, f"Не удалось обновить подписку: {e}", [])
@@ -366,13 +381,26 @@ def sync_subscription(url: str = "") -> Tuple[bool, str, List[Dict[str, Any]]]:
     # 5. Кэширование метаданных подписки
     settings.data["subscription_url"] = target_url
     settings.data["subscription_cache"] = data
-    settings.data["subscription_status"] = data.get("status", "active")
+    sub_status = data.get("status", "active")
 
     user_info = data.get("user")
     if isinstance(user_info, dict):
         settings.data["subscription_username"] = str(user_info.get("username", ""))
         settings.data["subscription_role"] = str(user_info.get("role", "user"))
-        settings.data["subscription_expires_at"] = str(user_info.get("expires_at", ""))
+        exp_val = str(user_info.get("expires_at", ""))
+        settings.data["subscription_expires_at"] = exp_val
+        if exp_val:
+            try:
+                exp_clean = exp_val.replace("Z", "+00:00")
+                exp_dt = datetime.fromisoformat(exp_clean)
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > exp_dt:
+                    sub_status = "expired"
+            except Exception:
+                pass
+
+    settings.data["subscription_status"] = sub_status
 
     server_info = data.get("server")
     if isinstance(server_info, dict):
@@ -418,18 +446,46 @@ def get_subscription_info() -> Dict[str, Any]:
     if not expires_at and isinstance(cache.get("user"), dict):
         expires_at = str(cache["user"].get("expires_at", ""))
 
+    days_left: Optional[int] = None
+    is_expiring_soon = False
+    is_expired = (status == "expired")
+
+    if expires_at:
+        try:
+            exp_clean = str(expires_at).replace("Z", "+00:00")
+            exp_dt = datetime.fromisoformat(exp_clean)
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            now_dt = datetime.now(timezone.utc)
+            diff = exp_dt - now_dt
+            diff_seconds = diff.total_seconds()
+            if diff_seconds <= 0:
+                is_expired = True
+                if status not in ("blocked", "banned"):
+                    status = "expired"
+                days_left = 0
+            else:
+                days_left = int(diff.days)
+                if 0 <= days_left <= 3:
+                    is_expiring_soon = True
+        except Exception:
+            pass
+
     return {
         "url": url,
         "status": status,
         "username": username,
         "role": settings.get("subscription_role", "user"),
         "expires_at": expires_at,
+        "days_left": days_left,
+        "is_expiring_soon": is_expiring_soon,
+        "is_expired": is_expired,
         "server_host": server_host,
         "app_version": settings.get("subscription_app_version", ""),
         "last_sync": settings.get("subscription_last_sync", ""),
         "profiles_count": len(profiles),
         "profiles": profiles,
-        "is_active": bool(url and status == "active"),
+        "is_active": bool(url and status == "active" and not is_expired),
         "cache": cache
     }
 
