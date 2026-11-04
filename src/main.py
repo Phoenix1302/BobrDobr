@@ -12,16 +12,17 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon, QMenu, QAbstractButton, QRadioButton, QCheckBox,
     QGraphicsDropShadowEffect, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QObject, QEvent
+from PySide6.QtCore import Qt, QTimer, QSize, QObject, QEvent, QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette, QColor
 from PySide6.QtSvg import QSvgRenderer
 
 from core.vpn_manager import VPNState
 from core.amnezia import AmneziaWGLauncher
 from core.openconnect import OpenConnectLauncher
-from gui.styles import DARK_THEME_QSS, get_stylesheet
+from gui.styles import DARK_THEME_QSS, get_stylesheet, get_subscription_pixmap
 from gui.profile_card import VPNProfileCard
 from gui.profile_dialog import ProfileDialog, PasswordPromptDialog
+from gui.subscription_dialog import SubscriptionManageDialog
 from gui.log_viewer import LogViewer
 from gui.installer_dialog import InstallDialog, UninstallDialog, UpdateDialog, GitHubUpdateDialog
 from utils.platform_helper import is_windows, is_admin, get_base_dir, ensure_persistent_binaries, init_windows_job_object
@@ -29,6 +30,23 @@ from utils.installer_helper import is_installed_mode, has_installed_version
 from utils.version import APP_VERSION, APP_TITLE, GITHUB_REPO, GITHUB_RELEASES_URL
 from utils.config_store import settings
 from utils.github_updater import GitHubUpdateCheckerThread
+from utils.subscription_manager import SubscriptionManager
+
+
+class SubscriptionSyncThread(QThread):
+    """Фоновый поток синхронизации подписки для предотвращения подвисаний интерфейса."""
+    sync_finished = Signal(bool, str, list)
+
+    def __init__(self, url: str = "", parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        try:
+            ok, msg, updated = SubscriptionManager.sync(self.url)
+            self.sync_finished.emit(ok, msg, updated)
+        except Exception as e:
+            self.sync_finished.emit(False, str(e), [])
 
 
 class MainWindow(QMainWindow):
@@ -96,6 +114,11 @@ class MainWindow(QMainWindow):
         self._update_checker_thread: Optional[GitHubUpdateCheckerThread] = None
         self._latest_update_info: Optional[dict] = None
         QTimer.singleShot(3500, self._start_silent_update_check)
+
+        # Автоматическая фоновая синхронизация подписки (через 1.5 секунды)
+        self._sub_sync_thread: Optional[SubscriptionSyncThread] = None
+        if (settings.get("subscription_url") or "").strip():
+            QTimer.singleShot(1500, self._auto_sync_subscription)
 
         self._init_ui()
         self._wire_signals()
@@ -483,6 +506,40 @@ class MainWindow(QMainWindow):
 
         action_bar.addStretch()
 
+        # Кнопка меню подписки (отображается при наличии URL или подписных профилей)
+        self.btn_subscription = QPushButton("✨ Подписка")
+        self.btn_subscription.setObjectName("btn_subscription_menu")
+        self.btn_subscription.setCursor(Qt.PointingHandCursor)
+        sub_pix = get_subscription_pixmap(16, 16)
+        if not sub_pix.isNull():
+            self.btn_subscription.setIcon(QIcon(sub_pix))
+            self.btn_subscription.setText(" Подписка")
+        self.btn_subscription.setStyleSheet("""
+            QPushButton#btn_subscription_menu {
+                background-color: rgba(168, 85, 247, 0.14);
+                color: #c084fc;
+                border: 1px solid rgba(168, 85, 247, 0.45);
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 700;
+                padding: 7px 16px;
+            }
+            QPushButton#btn_subscription_menu:hover {
+                background-color: rgba(168, 85, 247, 0.25);
+                border-color: #a855f7;
+                color: #ffffff;
+            }
+            QPushButton#btn_subscription_menu:pressed {
+                background-color: rgba(147, 51, 234, 0.40);
+                border-color: #9333ea;
+                color: #ffffff;
+            }
+        """)
+        self.btn_subscription.setToolTip("Управление подпиской, просмотр срока действия и связанных подключений")
+        self.btn_subscription.clicked.connect(self._on_manage_subscription_clicked)
+        self.btn_subscription.setVisible(False)
+        action_bar.addWidget(self.btn_subscription)
+
         # Кнопка добавления подключения
         btn_add = QPushButton("+ Создать подключение")
         btn_add.setObjectName("btn_primary")
@@ -655,7 +712,7 @@ class MainWindow(QMainWindow):
             lbl_empty.setAlignment(Qt.AlignCenter)
             empty_layout.addWidget(lbl_empty)
 
-            lbl_empty_sub = QLabel("Нажмите «+ Создать подключение», чтобы добавить конфигурацию AmneziaWG или шлюз OpenConnect.")
+            lbl_empty_sub = QLabel("Нажмите «+ Создать подключение», чтобы добавить конфигурацию AmneziaWG, шлюз OpenConnect или подписку BobrDobr VPN.")
             lbl_empty_sub.setWordWrap(True)
             lbl_empty_sub.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             lbl_empty_sub.setMinimumHeight(44)
@@ -682,6 +739,48 @@ class MainWindow(QMainWindow):
                 self.profiles_layout.addWidget(card)
 
         self.profiles_layout.addStretch()
+        self._update_subscription_ui()
+
+    def _update_subscription_ui(self):
+        """Показывает кнопку меню подписки, если есть URL подписки или подписные профили."""
+        sub_url = (settings.get("subscription_url") or "").strip()
+        has_sub_profiles = any(
+            p.get("is_subscription") or p.get("sub_id") is not None
+            for p in settings.get_profiles()
+        )
+        if hasattr(self, "btn_subscription"):
+            self.btn_subscription.setVisible(bool(sub_url or has_sub_profiles))
+
+    def _on_manage_subscription_clicked(self):
+        """Открывает расширенный диалог управления подпиской BobrDobr."""
+        dlg = SubscriptionManageDialog(parent=self)
+        dlg.exec()
+
+    def _restore_status_bar_idle(self):
+        if not self.active_profile_id:
+            self.status_pill.setText("○ Плотина не построена")
+            self._update_status_pill_style(VPNState.DISCONNECTED.value)
+            self.lbl_active_proto.setText("Речной трафик идёт открыто")
+
+    def _auto_sync_subscription(self):
+        """Фоновая тихая синхронизация подписки на старте с мягким откатом к кэшу."""
+        sub_url = (settings.get("subscription_url") or "").strip()
+        if not sub_url:
+            return
+
+        self._sub_sync_thread = SubscriptionSyncThread(sub_url, self)
+        self._sub_sync_thread.sync_finished.connect(self._on_auto_sync_finished)
+        self._sub_sync_thread.start()
+
+    def _on_auto_sync_finished(self, ok: bool, msg: str, profiles: list):
+        if ok:
+            self._render_profiles()
+            self._update_subscription_ui()
+            if hasattr(self, "log_viewer"):
+                self.log_viewer.append_log(f"[Подписка] Фоновая синхронизация выполнена успешно: обновлено профилей: {len(profiles)}.")
+        else:
+            if hasattr(self, "log_viewer"):
+                self.log_viewer.append_log(f"[Подписка] Фоновая синхронизация не удалась (используется сохранённый оффлайн-кэш): {msg}")
 
     def _toggle_log_viewer(self):
         new_state = not self.log_viewer.isVisible()
@@ -692,9 +791,14 @@ class MainWindow(QMainWindow):
     def _on_add_profile(self):
         dlg = ProfileDialog(parent=self)
         if dlg.exec() == QDialog.Accepted:
-            new_data = dlg.get_data()
-            settings.save_profile(new_data)
-            self._render_profiles()
+            if getattr(dlg, "is_subscription_synced", False):
+                self._update_subscription_ui()
+                self._render_profiles()
+            else:
+                new_data = dlg.get_data()
+                if new_data and new_data.get("name"):
+                    settings.save_profile(new_data)
+                    self._render_profiles()
 
     def _on_edit_profile(self, profile_id: str):
         prof = settings.get_profile(profile_id)
@@ -900,7 +1004,9 @@ class MainWindow(QMainWindow):
                 camouflage_secret=cam,
                 username=user,
                 password=pwd,
-                allow_insecure_cert=False
+                allow_insecure_cert=False,
+                group=profile.get("group", ""),
+                connect_url=profile.get("camouflage_connect_url", "") or profile.get("camouflage_path", "")
             )
 
     def _on_disconnect_profile(self, profile_id: str, wait: bool = False):
@@ -1186,6 +1292,20 @@ def check_single_instance() -> bool:
 
 
 def main():
+    if any(arg in sys.argv for arg in ("--help", "-h", "--version", "-v")):
+        if is_windows():
+            try:
+                import ctypes
+                ctypes.windll.kernel32.AttachConsole(-1)
+            except Exception:
+                pass
+        if "--version" in sys.argv or "-v" in sys.argv:
+            print(f"BobrDobr VPN v{APP_VERSION}")
+            sys.exit(0)
+        if "--help" in sys.argv or "-h" in sys.argv:
+            print(f"BobrDobr VPN v{APP_VERSION}\nUsage: BobrDobr-VPN.exe [--version] [--help]")
+            sys.exit(0)
+
     if is_windows():
         if not check_single_instance():
             sys.exit(0)

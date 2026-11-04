@@ -7,7 +7,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt, Signal
 from core.vpn_manager import VPNState
-from gui.styles import get_amnezia_pixmap, get_openconnect_pixmap
+from gui.styles import get_amnezia_pixmap, get_openconnect_pixmap, get_subscription_pixmap
+from utils.config_store import settings
+from utils.subscription_manager import format_subscription_profile_name
 
 
 CONNECT_BTN_STYLE = """
@@ -226,6 +228,7 @@ class VPNProfileCard(QFrame):
 
         # Бейдж типа протокола с векторным значком
         proto_badge = QFrame()
+        proto_badge.setObjectName("proto_badge")
         proto_badge.setFixedHeight(26)
         proto_badge_layout = QHBoxLayout(proto_badge)
         proto_badge_layout.setContentsMargins(6, 2, 8, 2)
@@ -239,7 +242,7 @@ class VPNProfileCard(QFrame):
 
         if self.proto == "amnezia":
             proto_badge.setStyleSheet("""
-                QFrame {
+                QFrame#proto_badge {
                     background-color: rgba(245, 158, 11, 0.12);
                     border: 1px solid rgba(245, 158, 11, 0.35);
                     border-radius: 6px;
@@ -254,7 +257,7 @@ class VPNProfileCard(QFrame):
                 lbl_proto_icon.setText("⚡")
         else:
             proto_badge.setStyleSheet("""
-                QFrame {
+                QFrame#proto_badge {
                     background-color: rgba(34, 211, 238, 0.12);
                     border: 1px solid rgba(34, 211, 238, 0.35);
                     border-radius: 6px;
@@ -272,9 +275,68 @@ class VPNProfileCard(QFrame):
         proto_badge_layout.addWidget(lbl_proto_text)
         top_row.addWidget(proto_badge)
 
-        # Название профиля
+        # Проверка, является ли профиль подписочным
+        raw_name = str(self.profile.get("name", "")).strip()
+        raw_name_lower = raw_name.lower()
+        is_sub = (
+            bool(self.profile.get("is_subscription"))
+            or self.profile.get("sub_id") is not None
+            or raw_name_lower.endswith("-sub")
+            or raw_name.endswith("-SUB")
+            or " -sub" in raw_name_lower
+            or " -SUB" in raw_name
+        )
+
+        if is_sub:
+            sub_badge = QFrame()
+            sub_badge.setObjectName("sub_badge")
+            sub_badge.setFixedHeight(26)
+            sub_badge_layout = QHBoxLayout(sub_badge)
+            sub_badge_layout.setContentsMargins(6, 2, 8, 2)
+            sub_badge_layout.setSpacing(5)
+            sub_badge.setStyleSheet("""
+                QFrame#sub_badge {
+                    background-color: rgba(168, 85, 247, 0.15);
+                    border: 1px solid rgba(168, 85, 247, 0.45);
+                    border-radius: 6px;
+                }
+            """)
+            lbl_sub_icon = QLabel()
+            lbl_sub_icon.setFixedSize(14, 14)
+            lbl_sub_icon.setScaledContents(True)
+            sub_pix = get_subscription_pixmap(14, 14)
+            if not sub_pix.isNull():
+                lbl_sub_icon.setPixmap(sub_pix)
+            else:
+                lbl_sub_icon.setText("🔑")
+            lbl_sub_icon.setStyleSheet("background: transparent; border: none; padding: 0;")
+
+            lbl_sub_text = QLabel("sub")
+            lbl_sub_text.setStyleSheet("color: #c084fc; font-size: 11px; font-weight: 800; background: transparent; border: none; padding: 0;")
+            sub_badge_layout.addWidget(lbl_sub_icon)
+            sub_badge_layout.addWidget(lbl_sub_text)
+
+            expires_at = self.profile.get("expires_at") or settings.get("subscription_expires_at", "")
+            exp_display = "Бессрочно"
+            if expires_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                    exp_display = dt.strftime("%d.%m.%Y")
+                except Exception:
+                    exp_display = str(expires_at)
+
+            sub_badge.setToolTip(f"Подключение получено по подписке (BobrDobr VPN)\nИстекает: {exp_display}")
+            top_row.addWidget(sub_badge)
+
+        # Название профиля (для подписки гарантируем суффикс -sub)
         name_text = self.profile.get("name", "Без названия")
+        if is_sub:
+            name_text = format_subscription_profile_name(name_text)
+
         self.lbl_name = QLabel(name_text)
+        self.lbl_name.setToolTip(name_text)
+        self.lbl_name.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.lbl_name.setStyleSheet("font-size: 16px; font-weight: 800; color: #f8fafc; margin-left: 2px;")
         top_row.addWidget(self.lbl_name)
 
@@ -340,6 +402,7 @@ class VPNProfileCard(QFrame):
             details_label = QLabel(f"🌐 <span style='color: #cbd5e1; font-weight: 600;'>{server}:{port}</span>{cam_info}{user_info}")
 
         details_label.setTextFormat(Qt.RichText)
+        details_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         details_label.setStyleSheet("font-size: 12px; color: #94a3b8;")
         details_row.addWidget(details_label)
         details_row.addStretch()
@@ -348,12 +411,14 @@ class VPNProfileCard(QFrame):
         self.btn_edit = QPushButton("⚙ Настройки")
         self.btn_edit.setObjectName("btn_card_edit")
         self.btn_edit.setCursor(Qt.PointingHandCursor)
+        self.btn_edit.setFixedHeight(28)
         self.btn_edit.clicked.connect(lambda: self.edit_requested.emit(self.profile_id))
         details_row.addWidget(self.btn_edit)
 
         self.btn_delete = QPushButton("🗑 Удалить")
         self.btn_delete.setObjectName("btn_card_delete")
         self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.setFixedHeight(28)
         self.btn_delete.clicked.connect(lambda: self.delete_requested.emit(self.profile_id))
         details_row.addWidget(self.btn_delete)
 

@@ -9,6 +9,7 @@ import copy
 from typing import Any, Dict, List, Optional
 from utils.platform_helper import is_windows
 from utils.crypto_helper import encrypt_secret, decrypt_secret, is_encrypted
+from utils.conf_parser import parse_amnezia_config_text
 
 
 PROFILE_SECRET_KEYS = (
@@ -18,6 +19,7 @@ PROFILE_SECRET_KEYS = (
     "server",
     "camouflage",
     "username",
+    "camouflage_connect_url",
 )
 
 AMNEZIA_REDUNDANT_KEYS = (
@@ -35,6 +37,7 @@ GLOBAL_SENSITIVE_KEYS = (
     "openconnect_camouflage_secret",
     "openconnect_user",
     "amnezia_conf_path",
+    "subscription_url",
 )
 
 
@@ -48,8 +51,7 @@ def _decrypt_profile_secrets(profile: Dict[str, Any]) -> Dict[str, Any]:
         content = profile.get("config_content", "")
         if content and isinstance(content, str):
             try:
-                from core.amnezia import AmneziaWGLauncher
-                parsed = AmneziaWGLauncher.parse_config_text(content)
+                parsed = parse_amnezia_config_text(content)
                 if parsed.get("endpoint"):
                     profile["endpoint"] = parsed["endpoint"]
                 if parsed.get("address"):
@@ -220,6 +222,27 @@ class ConfigStore:
         if isinstance(profiles, list):
             for p in profiles:
                 if isinstance(p, dict):
+                    # Auto-normalize subscription profile names to lowercase '-sub' without space
+                    p_name = str(p.get("name", "")).strip()
+                    p_name_lower = p_name.lower()
+                    is_sub = (
+                        bool(p.get("is_subscription"))
+                        or p.get("sub_id") is not None
+                        or p_name_lower.endswith("-sub")
+                        or p_name.endswith("-SUB")
+                        or " -sub" in p_name_lower
+                        or " -SUB" in p_name
+                    )
+                    if is_sub and p_name:
+                        from utils.subscription_manager import format_subscription_profile_name
+                        norm_name = format_subscription_profile_name(p_name)
+                        if p.get("name") != norm_name:
+                            p["name"] = norm_name
+                            needs_save = True
+                        if not p.get("is_subscription"):
+                            p["is_subscription"] = True
+                            needs_save = True
+
                     proto = p.get("proto")
                     if proto == "amnezia":
                         for red in AMNEZIA_REDUNDANT_KEYS:
@@ -229,12 +252,25 @@ class ConfigStore:
                         if "config_content" in p and p["config_content"] and not is_encrypted(str(p["config_content"])):
                             needs_save = True
                     elif proto == "openconnect":
-                        for field in ("server", "camouflage", "username", "password"):
+                        for field in ("server", "camouflage", "username", "password", "camouflage_connect_url"):
                             if field in p and p[field] and not is_encrypted(str(p[field])):
                                 needs_save = True
                                 break
 
                     _decrypt_profile_secrets(p)
+
+                    # Auto-fix ocserv camouflage for subscription profiles to use standard query string /?secret
+                    if proto == "openconnect" and (p.get("is_subscription") or p.get("sub_id")):
+                        sec = str(p.get("camouflage") or "").strip().lstrip("/?")
+                        srv = str(p.get("server") or "").strip()
+                        if sec:
+                            if "?" not in srv:
+                                p["server"] = f"{srv}/?{sec}"
+                                needs_save = True
+                            target_camo_url = f"https://{srv}:{p.get('port', 443)}/?{sec}"
+                            if p.get("camouflage_connect_url") != target_camo_url:
+                                p["camouflage_connect_url"] = target_camo_url
+                                needs_save = True
 
         # Decrypt global sensitive fields
         for key in GLOBAL_SENSITIVE_KEYS:
@@ -308,8 +344,6 @@ class ConfigStore:
         if they originally only pointed to a local .conf file on disk.
         Does NOT sniff temporary directories (%TEMP%).
         """
-        from core.amnezia import AmneziaWGLauncher
-
         profiles = self.get_profiles()
         modified = False
 
@@ -331,7 +365,7 @@ class ConfigStore:
                 if content:
                     p["config_content"] = content
                     try:
-                        parsed = AmneziaWGLauncher.parse_config_text(content)
+                        parsed = parse_amnezia_config_text(content)
                         if parsed.get("endpoint"):
                             p["endpoint"] = parsed["endpoint"]
                         if parsed.get("address"):
@@ -361,8 +395,6 @@ class ConfigStore:
 
     def save_profile(self, profile: Dict[str, Any]) -> str:
         """Adds or updates a connection profile with full parameter persistence."""
-        from core.amnezia import AmneziaWGLauncher
-
         # If AmneziaWG, ensure config_content is parsed and preserved
         if profile.get("proto") == "amnezia":
             content = profile.get("config_content", "").strip()
@@ -378,7 +410,7 @@ class ConfigStore:
 
             if content:
                 try:
-                    parsed = AmneziaWGLauncher.parse_config_text(content)
+                    parsed = parse_amnezia_config_text(content)
                     if parsed.get("endpoint"):
                         profile["endpoint"] = parsed["endpoint"]
                     if parsed.get("address"):

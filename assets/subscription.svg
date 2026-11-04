@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <defs>
+    <linearGradient id="subGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="subStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="subInner" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="2.5" y="4.5" width="19" height="15" rx="3.5" fill="url(#subGrad)" stroke="url(#subStroke)" stroke-width="1.8"/>
+  <path d="M2.5 9.5h19" stroke="#a855f7" stroke-width="1.2" stroke-opacity="0.6"/>
+  <rect x="5.5" y="12" width="4" height="4" rx="1" fill="#06b6d4" fill-opacity="0.3" stroke="#22d3ee" stroke-width="1.2"/>
+  <path d="M13 13.5h5.5M13 15.5h3.5" stroke="url(#subInner)" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

@@ -7,6 +7,7 @@ import uuid
 import json
 from typing import Optional, Tuple, Dict, Any, List
 from utils.platform_helper import is_windows, run_silent_cmd, remove_firewall_rule
+from utils.conf_parser import parse_amnezia_config_text
 
 
 def get_install_dir() -> str:
@@ -337,8 +338,6 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return clean
 
     elif proto == "amnezia":
-        from core.amnezia import AmneziaWGLauncher
-
         content = str(p.get("config_content") or "").strip()
         cfg_path = str(p.get("config_path") or "").strip()
 
@@ -356,7 +355,7 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             endpoint = str(p.get("endpoint") or "")
             if not endpoint:
                 try:
-                    parsed = AmneziaWGLauncher.parse_config_text(content)
+                    parsed = parse_amnezia_config_text(content)
                     endpoint = parsed.get("endpoint", "")
                 except Exception:
                     pass

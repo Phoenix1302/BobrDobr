@@ -67,7 +67,7 @@ QDialogButtonBox {
 QToolTip {
     background-color: #141c22;
     color: #f8fafc;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12px;
@@ -290,20 +290,21 @@ QComboBox::down-arrow {
 QComboBox QAbstractItemView {
     background-color: #182226;
     color: #f8fafc;
-    border: 1px solid #d97706;
+    border: 1px solid rgba(217, 119, 6, 0.45);
     border-radius: 8px;
     selection-background-color: #d97706;
     selection-color: #ffffff;
-    padding: 6px;
+    padding: 4px;
     outline: none;
 }
 
 QComboBox QAbstractItemView::item {
     min-height: 32px;
-    padding: 6px 12px;
+    padding: 4px 10px;
     color: #f8fafc;
     background-color: #182226;
-    border-radius: 4px;
+    border-radius: 6px;
+    margin: 1px 0px;
 }
 
 QComboBox QAbstractItemView::item:selected {
@@ -504,10 +505,6 @@ QPushButton#btn_card_delete:hover {
 
 QPushButton#btn_card_delete:pressed {
     background-color: rgba(239, 68, 68, 0.25);
-}
-
-QPushButton#btn_card_delete:pressed {
-    background-color: #2b0b0b;
     border-color: #b91c1c;
 }
 
@@ -583,7 +580,7 @@ QFrame#awg_status_footer QLabel {
 /* Scrollbars */
 QScrollBar:vertical {
     border: none;
-    background: #0f1416;
+    background: transparent;
     width: 8px;
     margin: 0px;
     border-radius: 4px;
@@ -610,7 +607,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 
 QScrollBar:horizontal {
     border: none;
-    background: #0f1416;
+    background: transparent;
     height: 8px;
     margin: 0px;
     border-radius: 4px;
@@ -855,6 +852,22 @@ def resolve_openconnect_icon_path() -> str:
     return ""
 
 
+def resolve_subscription_icon_path() -> str:
+    """Finds the Subscription SVG icon across frozen bundle and source paths."""
+    candidates = [
+        os.path.join(get_base_dir(), "assets", "subscription.svg"),
+        os.path.join(get_base_dir(), "src", "assets", "subscription.svg"),
+        os.path.join(os.path.dirname(__file__), "..", "assets", "subscription.svg"),
+        os.path.join(os.path.dirname(__file__), "assets", "subscription.svg"),
+        os.path.join(os.getcwd(), "assets", "subscription.svg"),
+        os.path.join(os.getcwd(), "src", "assets", "subscription.svg"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c).replace("\\", "/")
+    return ""
+
+
 def get_amnezia_icon():
     from PySide6.QtGui import QIcon
     p = resolve_amnezia_icon_path()
@@ -867,6 +880,12 @@ def get_openconnect_icon():
     return QIcon(p) if p else QIcon()
 
 
+def get_subscription_icon():
+    from PySide6.QtGui import QIcon
+    p = resolve_subscription_icon_path()
+    return QIcon(p) if p else QIcon()
+
+
 def get_amnezia_pixmap(width: int = 16, height: int = 16):
     from PySide6.QtCore import QSize
     icon = get_amnezia_icon()
@@ -876,6 +895,12 @@ def get_amnezia_pixmap(width: int = 16, height: int = 16):
 def get_openconnect_pixmap(width: int = 16, height: int = 16):
     from PySide6.QtCore import QSize
     icon = get_openconnect_icon()
+    return icon.pixmap(QSize(width, height))
+
+
+def get_subscription_pixmap(width: int = 16, height: int = 16):
+    from PySide6.QtCore import QSize
+    icon = get_subscription_icon()
     return icon.pixmap(QSize(width, height))
 
 

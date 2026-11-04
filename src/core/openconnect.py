@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from core.vpn_manager import VPNLauncherBase, VPNState
 from utils.platform_helper import (
     find_binary, is_windows, is_linux, get_base_dir, get_persistent_bin_dir,
@@ -33,6 +33,8 @@ class OpenConnectLauncher(VPNLauncherBase):
         self.protocol: str = "anyconnect"
         self.username: str = ""
         self.camouflage_secret: str = ""
+        self.connect_url: str = ""
+        self.group: str = ""
 
     def start_connection(
         self,
@@ -43,11 +45,15 @@ class OpenConnectLauncher(VPNLauncherBase):
         protocol: str = "anyconnect",
         allow_insecure_cert: bool = False,
         camouflage_secret: str = "",
-        extra_args: Optional[List[str]] = None
+        connect_url: str = "",
+        group: str = "",
+        extra_args: Optional[List[str]] = None,
+        **kwargs: Any
     ) -> bool:
         """
         Launches openconnect with --passwd-on-stdin to keep credentials private.
-        Supports ocserv camouflage (traffic obfuscation masked behind a web service).
+        Supports ocserv camouflage (traffic obfuscation masked behind a web service)
+        and --authgroup routing.
         """
         if not server or not server.strip():
             self.error_occurred.emit("Server address is required!")
@@ -76,45 +82,88 @@ class OpenConnectLauncher(VPNLauncherBase):
         self.protocol = protocol
         self.username = username.strip()
         self.camouflage_secret = camouflage_secret.strip()
+        self.connect_url = connect_url.strip() if connect_url else ""
+        self.group = group.strip() if group else ""
 
-        # Build clean server URL with host, port, and optional camouflage
-        clean_server = self.server
+        # Determine raw target string: connect_url takes precedence if provided
+        if self.connect_url:
+            raw_target = self.connect_url
+            if raw_target.startswith("/"):
+                raw_target = f"https://{self.server}{raw_target}"
+        else:
+            raw_target = self.server
+
         scheme = "https://"
-        if clean_server.startswith("https://"):
-            clean_server = clean_server[8:]
-        elif clean_server.startswith("http://"):
+        if raw_target.startswith("https://"):
+            scheme = "https://"
+            raw_target = raw_target[8:]
+        elif raw_target.startswith("http://"):
             scheme = "http://"
-            clean_server = clean_server[7:]
+            raw_target = raw_target[7:]
+        elif raw_target.startswith("anyconnect://"):
+            scheme = "https://"
+            raw_target = raw_target[13:]
 
-        # Check if URL already contained a query / camouflage string (e.g. ?secret_token)
+        # Separate query string if present
         query_part = ""
-        if "?" in clean_server:
-            clean_server, query_part = clean_server.split("?", 1)
+        if "?" in raw_target:
+            raw_target, query_part = raw_target.split("?", 1)
 
-        active_camouflage = self.camouflage_secret if self.camouflage_secret else query_part
-        clean_server = clean_server.rstrip("/")
+        # Separate path if present
+        path_part = ""
+        if "/" in raw_target:
+            host_port, path_part = raw_target.split("/", 1)
+            path_part = "/" + path_part
+        else:
+            host_port = raw_target
 
-        # Check if custom port was embedded in host string
-        host = clean_server
+        # Parse host and port cleanly without choking on path
+        host = host_port
         target_port = self.port
-        if ":" in clean_server:
-            parts = clean_server.split(":", 1)
+        if ":" in host_port:
+            parts = host_port.split(":", 1)
             host = parts[0]
             try:
                 target_port = int(parts[1])
             except ValueError:
                 pass
 
+        # Handle camouflage secret / query / path
+        # In ocserv AnyConnect protocol, camouflage is strictly expected as a query string: https://host:port/?secret
+        active_camouflage = self.camouflage_secret
+        if active_camouflage:
+            camo_token = active_camouflage.strip().lstrip("/?")
+            if camo_token:
+                # If path_part was just the camouflage token passed in connect_url (e.g. /kurwa), strip path
+                if path_part.strip("/") == camo_token:
+                    path_part = ""
+                query_part = camo_token
+        elif path_part and not query_part:
+            # Fallback: if server sent a single-token path without query (e.g. /kurwa), treat as camouflage query
+            stripped_path = path_part.strip("/")
+            if stripped_path and "/" not in stripped_path and not stripped_path.endswith((".xml", ".html", ".php", ".jsp")):
+                query_part = stripped_path
+                path_part = ""
+
+        # Build host with port (omit standard 443 if standard)
         if target_port and target_port != 443:
             host_with_port = f"{host}:{target_port}"
         else:
             host_with_port = host
 
-        # Construct final target
-        if active_camouflage:
-            server_target = f"{scheme}{host_with_port}/?{active_camouflage}"
+        clean_path = path_part.rstrip("/") if path_part else ""
+        if clean_path and clean_path != "/":
+            base_url = f"{scheme}{host_with_port}{clean_path}"
         else:
-            server_target = f"{scheme}{host_with_port}"
+            base_url = f"{scheme}{host_with_port}"
+
+        if query_part:
+            if clean_path and clean_path != "/":
+                server_target = f"{base_url}?{query_part}"
+            else:
+                server_target = f"{base_url}/?{query_part}"
+        else:
+            server_target = base_url
 
         # Construct safe command arguments
         cmd = [binary]
@@ -131,6 +180,9 @@ class OpenConnectLauncher(VPNLauncherBase):
 
         if self.username:
             cmd.extend(["--user", self.username])
+
+        if self.group:
+            cmd.extend(["--authgroup", self.group])
 
         # In OpenConnect v9+, --no-cert-check was removed upstream as insecure.
         # Standard system CA validation is enabled by default and validates trusted certificates.
@@ -149,8 +201,9 @@ class OpenConnectLauncher(VPNLauncherBase):
         # Target server must be the last argument
         cmd.append(server_target)
 
-        cam_info = f" [Camouflage active: ?{active_camouflage}]" if active_camouflage else ""
-        self.log(f"Initiating OpenConnect: protocol={self.protocol}, server={server_target}{cam_info}, user={self.username or '<empty>'}", "sys")
+        cam_info = f" [Camouflage active: {clean_path or ('?' + query_part if query_part else '')}]" if (clean_path or query_part) else ""
+        group_info = f" [Group: {self.group}]" if self.group else ""
+        self.log(f"Initiating OpenConnect: protocol={self.protocol}, server={server_target}{cam_info}{group_info}, user={self.username or '<empty>'}", "sys")
 
         # Start process with password passed safely via stdin
         return self._spawn_process(cmd=cmd, stdin_data=password)
