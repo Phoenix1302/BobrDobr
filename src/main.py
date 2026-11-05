@@ -320,7 +320,6 @@ class MainWindow(QMainWindow):
                                 self.tray_icon.hide()
                             self.close()
                             QApplication.instance().quit()
-                            import os
                             os._exit(0)
                         else:
                             self.restore_and_bring_to_front()
@@ -371,7 +370,6 @@ class MainWindow(QMainWindow):
         self.close()
         QApplication.instance().quit()
         try:
-            import os
             os._exit(0)
         except Exception:
             sys.exit(0)
@@ -1644,7 +1642,6 @@ class MainWindow(QMainWindow):
             event.accept()
             QApplication.instance().quit()
             try:
-                import os
                 os._exit(0)
             except Exception:
                 sys.exit(0)
@@ -1691,7 +1688,6 @@ class MainWindow(QMainWindow):
                 event.accept()
                 QApplication.instance().quit()
                 try:
-                    import os
                     os._exit(0)
                 except Exception:
                     sys.exit(0)
@@ -1708,7 +1704,6 @@ class MainWindow(QMainWindow):
             event.accept()
             QApplication.instance().quit()
             try:
-                import os
                 os._exit(0)
             except Exception:
                 sys.exit(0)
@@ -1896,7 +1891,6 @@ def main():
     except Exception:
         pass
     try:
-        import os
         os._exit(ret)
     except Exception:
         sys.exit(ret)
