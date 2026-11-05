@@ -365,7 +365,7 @@ def sanitize_profile(p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "id": p_id,
             "name": name,
             "proto": "amnezia",
-            "interface": str(p.get("interface") or "awg0").strip() or "awg0",
+            "interface": str(p.get("interface") or "bobr0").strip() or "bobr0",
             "config_content": content,
         }
         return clean

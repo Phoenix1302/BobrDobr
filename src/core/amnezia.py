@@ -11,7 +11,8 @@ from utils.platform_helper import (
     find_binary, get_wintun_path, is_windows, is_linux, run_silent_cmd,
     kill_amnezia_daemons, delete_wintun_adapter,
     is_process_running, is_network_adapter_present, get_wintun_device_instances,
-    prepare_tunnel_adapter, get_next_available_tunnel_adapter, cleanup_stale_temp_configs
+    prepare_tunnel_adapter, get_next_available_tunnel_adapter, cleanup_stale_temp_configs,
+    cleanup_orphan_bobrdobr_adapters
 )
 
 
@@ -27,7 +28,7 @@ class AmneziaWGLauncher(VPNLauncherBase):
     def __init__(self, parent=None):
         super().__init__(name="AmneziaWG", parent=parent)
         self.config_path: Optional[str] = None
-        self.interface_name: str = "awg0"
+        self.interface_name: str = "bobr0"
         self._temp_config: Optional[str] = None
         self._session_run_id: int = 0
 
@@ -56,15 +57,15 @@ class AmneziaWGLauncher(VPNLauncherBase):
         config_content: str = "",
         config_path: str = "",
         obfuscation_overrides: Optional[Dict[str, str]] = None,
-        interface_name: str = "awg0"
+        interface_name: str = "bobr0"
     ) -> bool:
         """
         Prepares the tunnel configuration (directly from settings config_content or file),
         resolves binary & wintun.dll, and spawns the tunnel process.
         """
-        # If previous connection is still active and stop was not requested, soft stop it
+        # If previous connection is still active and stop was not requested, soft stop it asynchronously
         if self.is_running() and not self._stop_requested.is_set():
-            self.log("Stopping previous AmneziaWG connection...", "sys")
+            self.log("Stopping previous AmneziaWG connection asynchronously...", "sys")
             self.stop_connection(wait=False)
 
         active_config_path: Optional[str] = None
@@ -108,7 +109,7 @@ class AmneziaWGLauncher(VPNLauncherBase):
             return False
 
         self.config_path = active_config_path
-        self.interface_name = (interface_name or "").strip() or "awg0"
+        self.interface_name = (interface_name or "").strip() or "bobr0"
 
         # Locate executable
         binary = find_binary("amneziawg-go") or find_binary("awg-quick") or find_binary("wireguard")
@@ -214,9 +215,12 @@ class AmneziaWGLauncher(VPNLauncherBase):
         stop_token = self._session_run_id
         if is_windows():
             def cleanup_worker():
-                if not wait:
-                    # Allow amneziawg-go and Wintun driver sufficient time for graceful adapter and route teardown
-                    time.sleep(6.5)
+                # Asynchronously monitor target_proc exit without arbitrary time.sleep
+                if target_proc is not None:
+                    try:
+                        target_proc.wait(timeout=6.0)
+                    except Exception:
+                        pass
 
                 # Clean up the temporary config of the stopped session safely
                 if target_temp_cfg and os.path.exists(target_temp_cfg):
@@ -267,6 +271,8 @@ class AmneziaWGLauncher(VPNLauncherBase):
         if any(keyword in lower for keyword in [
             "device started",
             "interface created",
+            "interface bobr0 created",
+            "interface bobr1 created",
             "interface awg0 created",
             "interface awg1 created",
             "interface awg2 created",

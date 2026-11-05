@@ -338,9 +338,9 @@ class ProfileDialog(QDialog):
         file_row.addWidget(btn_browse, 0)
         form.addRow("Импорт из файла:", file_row)
 
-        self.input_awg_iface = QLineEdit("awg0")
+        self.input_awg_iface = QLineEdit("bobr0")
         self.input_awg_iface.setFixedHeight(38)
-        self.input_awg_iface.setPlaceholderText("awg0")
+        self.input_awg_iface.setPlaceholderText("bobr0")
         self.input_awg_iface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         form.addRow("Имя интерфейса:", self.input_awg_iface)
         group_layout.addLayout(form)
@@ -890,7 +890,7 @@ class ProfileDialog(QDialog):
 
         if proto == "amnezia":
             self.input_awg_path.setText(self.profile.get("config_path", ""))
-            self.input_awg_iface.setText(self.profile.get("interface", "awg0"))
+            self.input_awg_iface.setText(self.profile.get("interface", "bobr0"))
             raw_content = self.profile.get("config_content", "")
             if raw_content:
                 self.text_awg_config.setPlainText(raw_content)
@@ -993,7 +993,7 @@ class ProfileDialog(QDialog):
 
             self.profile["config_content"] = config_content
             self.profile["config_path"] = cfg_path
-            self.profile["interface"] = self.input_awg_iface.text().strip() or "awg0"
+            self.profile["interface"] = self.input_awg_iface.text().strip() or "bobr0"
 
             # Сразу парсим и сохраняем параметры шлюза
             try:

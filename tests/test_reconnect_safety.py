@@ -32,7 +32,7 @@ class DummyLauncher(VPNLauncherBase):
 
     def start_connection(self, **kwargs) -> bool:
         if self.is_running() or self.state == VPNState.DISCONNECTING:
-            self.stop_connection(wait=True)
+            self.stop_connection(wait=False)
         self.spawn_called = True
         return True
 
@@ -94,10 +94,10 @@ class TestConsoleSignalSafety(unittest.TestCase):
 class TestReconnectRaceConditionSafety(unittest.TestCase):
     """Tests race conditions when disconnecting and reconnecting VPN processes."""
 
-    def test_start_connection_synchronously_waits_if_already_running(self):
+    def test_start_connection_asynchronously_stops_if_already_running(self):
         """
         When start_connection() is called while a process is still running,
-        it must synchronously wait for the old process to stop before starting a new one.
+        it must asynchronously stop the old process without blocking the UI thread.
         """
         launcher = DummyLauncher()
         old_proc = MagicMock()
@@ -106,21 +106,14 @@ class TestReconnectRaceConditionSafety(unittest.TestCase):
         launcher._state = VPNState.CONNECTED
 
         with patch.object(launcher, "stop_connection", wraps=launcher.stop_connection) as mock_stop:
-            # Simulate old process terminating during stop_connection
-            def terminate_effect(wait=False):
-                old_proc.poll.return_value = 0
-                launcher._process = None
-                launcher._state = VPNState.DISCONNECTED
-            mock_stop.side_effect = terminate_effect
-
             launcher.start_connection()
-            mock_stop.assert_called_with(wait=True)
+            mock_stop.assert_called_with(wait=False)
             self.assertTrue(launcher.spawn_called)
 
-    def test_start_connection_synchronously_waits_if_disconnecting(self):
+    def test_start_connection_asynchronously_stops_if_disconnecting(self):
         """
         When start_connection() is called while launcher is in DISCONNECTING state,
-        it must synchronously wait for clean termination.
+        it must initiate clean asynchronous shutdown without blocking.
         """
         launcher = DummyLauncher()
         launcher._state = VPNState.DISCONNECTING
@@ -129,14 +122,9 @@ class TestReconnectRaceConditionSafety(unittest.TestCase):
         launcher._process = old_proc
 
         with patch.object(launcher, "stop_connection", wraps=launcher.stop_connection) as mock_stop:
-            def terminate_effect(wait=False):
-                old_proc.poll.return_value = 0
-                launcher._process = None
-                launcher._state = VPNState.DISCONNECTED
-            mock_stop.side_effect = terminate_effect
-
             launcher.start_connection()
-            mock_stop.assert_called_with(wait=True)
+            mock_stop.assert_called_with(wait=False)
+            self.assertTrue(launcher.spawn_called)
 
     def test_shutdown_worker_timeout_increased_to_6s(self):
         """Verifies shutdown_worker waits up to 6.0 seconds for graceful teardown."""

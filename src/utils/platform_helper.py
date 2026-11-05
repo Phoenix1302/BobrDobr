@@ -539,26 +539,26 @@ def is_tunnel_adapter_busy(adapter_name: str) -> bool:
     return False
 
 
-def get_next_available_tunnel_adapter(preferred: str = "awg0") -> str:
+def get_next_available_tunnel_adapter(preferred: str = "bobr0") -> str:
     """
     Selects the next clean, available tunnel adapter for AmneziaWG/WireGuard:
     1. Checks not only is_network_adapter_present, but also the SWD\\WINTUN registry
        via get_wintun_device_instances().
-    2. Implements rotation between adapters (e.g. awg0 -> awg1 -> awg0) on rapid
-       reconnects or hot-switches to avoid waiting for Windows PnP teardown of the old device.
-    3. If preferred is busy or in teardown, dynamically finds the next free adapter (awg1, awg2, ...).
+    2. Dedicated BobrDobr naming with ping-pong rotation ('bobr0' <-> 'bobr1')
+       on rapid reconnects or hot-switches to avoid waiting for Windows PnP teardown of the old device.
+    3. If preferred is busy or in teardown, dynamically finds the next free adapter (bobr1, bobr0, bobr2, ...).
     """
     global _LAST_ASSIGNED_ADAPTER
 
     if not is_windows():
-        return preferred or "awg0"
+        return preferred or "bobr0"
 
-    target_pref = (preferred or "awg0").strip()
-    prefix = "".join(c for c in target_pref if not c.isdigit()) or "awg"
+    target_pref = (preferred or "bobr0").strip()
+    prefix = "".join(c for c in target_pref if not c.isdigit()) or "bobr"
 
-    # Determine candidate order with rotation:
-    # If _LAST_ASSIGNED_ADAPTER was awg0, rotate to awg1 first, then awg0, awg2, etc.
-    # If _LAST_ASSIGNED_ADAPTER was awg1, rotate to awg0 first, then awg1, awg2, etc.
+    # Determine candidate order with ping-pong rotation:
+    # If _LAST_ASSIGNED_ADAPTER was bobr0, rotate to bobr1 first, then bobr0, bobr2, etc.
+    # If _LAST_ASSIGNED_ADAPTER was bobr1, rotate to bobr0 first, then bobr1, bobr2, etc.
     candidates = []
     if _LAST_ASSIGNED_ADAPTER and _LAST_ASSIGNED_ADAPTER.startswith(prefix):
         try:
@@ -566,7 +566,7 @@ def get_next_available_tunnel_adapter(preferred: str = "awg0") -> str:
         except ValueError:
             last_idx = 0
 
-        # Alternate between 0 and 1 primarily for smooth two-adapter ping-pong (awg0 <-> awg1)
+        # Alternate between 0 and 1 primarily for smooth two-adapter ping-pong (bobr0 <-> bobr1)
         if last_idx == 0:
             preferred_order = [1, 0] + [i for i in range(2, 10)]
         elif last_idx == 1:
@@ -614,27 +614,25 @@ def get_next_available_tunnel_adapter(preferred: str = "awg0") -> str:
     return fallback
 
 
-def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
+def prepare_tunnel_adapter(interface_name: str = "bobr0") -> Tuple[bool, str]:
     """
     Pre-connection safety gate for Wintun / WireGuard network adapters:
     1. Terminates any lingering/orphaned daemon processes belonging to this application.
     2. Checks if the requested adapter is present and busy.
     3. If present and lingering without active processes, cleans up phantom adapter device.
-    4. If the adapter is occupied, finds an available fallback (awg1, awg2, etc.) using safe checks
-       without blocking.
+    4. If the adapter is occupied, finds an available fallback (bobr1, bobr0, bobr2, etc.)
+       using non-blocking checks without artificial sleeps.
     Returns (success, ready_interface_name).
     """
     if not is_windows():
         return True, interface_name
 
-    target_iface = (interface_name or "").strip() or "awg0"
+    target_iface = (interface_name or "").strip() or "bobr0"
 
     # 1. Clean up any orphaned BobrDobr daemon processes
     pids = get_bobrdobr_daemon_pids(["amneziawg-go.exe", "amneziawg.exe", "wireguard.exe"])
     if pids:
         kill_bobrdobr_daemons(pids)
-        import time
-        time.sleep(0.1)
 
     # 2. Check if the target adapter is free
     if not is_network_adapter_present(target_iface) and not is_tunnel_adapter_busy(target_iface):
@@ -642,11 +640,8 @@ def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
 
     # 3. Adapter exists: attempt fast removal of stale/phantom device
     delete_wintun_adapter(target_iface)
-    import time
-    for _ in range(3):
-        time.sleep(0.05)
-        if not is_network_adapter_present(target_iface):
-            return True, target_iface
+    if not is_network_adapter_present(target_iface) and not is_tunnel_adapter_busy(target_iface):
+        return True, target_iface
 
     # 4. If target_iface is STILL present or busy, automatically select a free alternative
     # without blocking the launch.
@@ -654,13 +649,120 @@ def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
     if alt_iface and alt_iface != target_iface and not is_tunnel_adapter_busy(alt_iface):
         return True, alt_iface
 
-    prefix = "".join(c for c in target_iface if not c.isdigit()) or "awg"
+    prefix = "".join(c for c in target_iface if not c.isdigit()) or "bobr"
     for idx in range(1, 10):
         cand = f"{prefix}{idx}"
         if not is_network_adapter_present(cand) and not is_tunnel_adapter_busy(cand):
             return True, cand
 
     return False, target_iface
+
+
+def cleanup_orphan_bobrdobr_adapters(
+    active_interfaces: Optional[Any] = None,
+    asynchronous: bool = True
+) -> None:
+    """
+    Scans SWD\\WINTUN device nodes and network interfaces exclusively for adapters
+    named 'bobr*' (and legacy 'awg*') that do not belong to the currently running session,
+    and cleans them up safely.
+
+    Never touches third-party adapters (Wi-Fi, Ethernet, Tailscale, ZeroTier, etc.).
+    If asynchronous=True, runs in a detached daemon thread without blocking the caller.
+    """
+    if not is_windows():
+        return
+
+    # Normalize active interfaces set
+    active_set = set()
+    if active_interfaces:
+        for iface in active_interfaces:
+            if iface:
+                active_set.add(str(iface).strip().lower())
+
+    def _cleanup_worker():
+        try:
+            # 1. Scan SWD\WINTUN registry device instances
+            wintun_instances = get_wintun_device_instances()
+            for inst_id in wintun_instances:
+                try:
+                    iface_name = get_wintun_interface_for_instance(inst_id)
+                    should_remove = False
+
+                    if iface_name:
+                        lower_name = iface_name.strip().lower()
+                        # Strictly target only bobr* and legacy awg*
+                        if (lower_name.startswith("bobr") or lower_name.startswith("awg")) and lower_name not in active_set:
+                            should_remove = True
+                    else:
+                        # If interface name is unmapped in Connection\Name, check FriendlyName / DeviceDesc in registry
+                        import winreg
+                        guid = inst_id.split("\\")[-1]
+                        try:
+                            with winreg.OpenKey(
+                                winreg.HKEY_LOCAL_MACHINE,
+                                rf"SYSTEM\CurrentControlSet\Enum\SWD\WINTUN\{guid}",
+                                0,
+                                winreg.KEY_READ
+                            ) as k:
+                                for prop in ["FriendlyName", "DeviceDesc"]:
+                                    try:
+                                        val, _ = winreg.QueryValueEx(k, prop)
+                                        s_val = str(val).strip().lower()
+                                        if (s_val.startswith("bobr") or s_val.startswith("awg")) and s_val not in active_set:
+                                            should_remove = True
+                                            break
+                                    except (FileNotFoundError, OSError):
+                                        pass
+                        except (FileNotFoundError, OSError):
+                            pass
+
+                    if should_remove:
+                        run_silent_cmd(["pnputil.exe", "/remove-device", inst_id, "/subtree"], timeout=4)
+                except Exception:
+                    pass
+
+            # 2. Scan network interfaces for orphaned 'bobr*' or legacy 'awg*' adapters
+            try:
+                res = run_silent_cmd(["netsh", "interface", "show", "interface"], timeout=3)
+                if res.returncode == 0 and res.stdout:
+                    for line in res.stdout.splitlines():
+                        parts = line.strip().split()
+                        if len(parts) >= 4:
+                            candidate_name = parts[-1].strip()
+                            cand_lower = candidate_name.lower()
+                            if (cand_lower.startswith("bobr") or cand_lower.startswith("awg")) and cand_lower not in active_set:
+                                delete_wintun_adapter(candidate_name)
+            except Exception:
+                pass
+
+            # 3. Fallback PowerShell check to clean any remaining orphan bobr*/awg* NetAdapters
+            filter_check = ""
+            if active_set:
+                items_str = ", ".join(f"'{x}'" for x in sorted(active_set))
+                filter_check = f"if (@({items_str}) -contains $a.Name.ToLower()) {{ continue }}; "
+
+            ps_script = (
+                f"$adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object {{ ($_.Name -like 'bobr*' -or $_.Name -like 'awg*') }}; "
+                f"foreach ($a in $adapters) {{ {filter_check}if ($a.PnPDeviceID) {{ pnputil.exe /remove-device $a.PnPDeviceID /subtree | Out-Null }} }}"
+            )
+            try:
+                run_silent_cmd(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+                    timeout=5
+                )
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+
+    if asynchronous:
+        import threading
+        t = threading.Thread(target=_cleanup_worker, name="BobrDobr-Adapter-Cleanup", daemon=True)
+        t.start()
+    else:
+        _cleanup_worker()
 
 
 def delete_wintun_adapter(interface_name: str = "") -> None:
@@ -715,6 +817,7 @@ def ensure_persistent_binaries() -> None:
     cleanup_stale_mei_folders()
     cleanup_stale_temp_configs()
     cleanup_orphaned_vpn_daemons()
+    cleanup_orphan_bobrdobr_adapters(asynchronous=True)
 
     # In installed mode, clean up obsolete %LOCALAPPDATA%/BobrDobr duplicate folder if it exists
     if is_installed_mode():

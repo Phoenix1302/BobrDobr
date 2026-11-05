@@ -214,6 +214,47 @@ class TestSubscriptionUI(unittest.TestCase):
             self.assertFalse(info["is_expired"])
             self.assertGreaterEqual(info["days_left"], 19)
 
+    def test_subscription_info_extracts_from_profiles_when_url_empty(self):
+        from utils.subscription_manager import get_subscription_info
+        from utils.config_store import settings
+
+        settings.data.clear()
+        settings.data["profiles"] = [
+            {"id": "p1", "name": "bobr-vpn-sub", "is_subscription": True, "server": "bobr.netphoenix.ru", "username": "alice"}
+        ]
+        info = get_subscription_info()
+        self.assertEqual(info["cabinet_url"], "https://bobr.netphoenix.ru")
+        self.assertEqual(info["server_host"], "bobr.netphoenix.ru")
+        self.assertEqual(info["username"], "alice")
+        self.assertEqual(info["status"], "active")
+
+    def test_subscription_manage_dialog_paste_url_logic(self):
+        from gui.subscription_dialog import SubscriptionManageDialog
+        from utils.config_store import settings
+
+        class DummyDialog:
+            def __init__(self):
+                self._full_url = ""
+                self._cabinet_url = ""
+                self.input_url = MagicMock()
+                self._refresh_data = MagicMock()
+            _on_paste_url_clicked = SubscriptionManageDialog._on_paste_url_clicked
+
+        with patch("gui.subscription_dialog.QApplication.clipboard") as mock_clip:
+            mock_clip.return_value.text.return_value = "https://bobr.netphoenix.ru/sub/PASTED_TOKEN"
+            dlg = DummyDialog()
+            dlg._on_paste_url_clicked()
+
+            self.assertEqual(dlg._full_url, "https://bobr.netphoenix.ru/sub/PASTED_TOKEN")
+            self.assertEqual(settings.data.get("subscription_url"), "https://bobr.netphoenix.ru/sub/PASTED_TOKEN")
+            dlg.input_url.setText.assert_called_with("https://bobr.netphoenix.ru/sub/PASTED_TOKEN")
+            dlg._refresh_data.assert_called_once()
+
+    def test_button_styles_padding_no_clipping(self):
+        from gui.profile_card import CONNECT_BTN_STYLE, DISCONNECT_BTN_STYLE, CONNECTING_BTN_STYLE
+        for style in (CONNECT_BTN_STYLE, DISCONNECT_BTN_STYLE, CONNECTING_BTN_STYLE):
+            self.assertNotIn("padding: 7px 22px", style)
+
 
 if __name__ == "__main__":
     unittest.main()

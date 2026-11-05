@@ -60,8 +60,8 @@ class OpenConnectLauncher(VPNLauncherBase):
             return False
 
         if self.is_running() or self.state == VPNState.DISCONNECTING:
-            self.log("Previous OpenConnect connection is still active or disconnecting. Waiting for clean shutdown...", "sys")
-            self.stop_connection(wait=True)
+            self.log("Stopping previous OpenConnect connection asynchronously...", "sys")
+            self.stop_connection(wait=False)
 
         binary = find_binary("openconnect")
         if not binary:
@@ -219,10 +219,12 @@ class OpenConnectLauncher(VPNLauncherBase):
         super().stop_connection(wait=wait)
         if is_windows() and not wait:
             def cleanup_worker():
-                # Allow openconnect sufficient time to transmit the AnyConnect BYE packet
-                # and execute vpnc-script disconnect before checking for lingering processes
-                import time
-                time.sleep(4.0)
+                # Asynchronously monitor target_proc exit without arbitrary time.sleep
+                if target_proc is not None:
+                    try:
+                        target_proc.wait(timeout=5.0)
+                    except Exception:
+                        pass
 
                 # Never kill daemons if user has already initiated a new connection or is connected
                 if self._session_run_id != stop_token:

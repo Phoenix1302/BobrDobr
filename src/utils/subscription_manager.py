@@ -97,6 +97,27 @@ def get_cabinet_url(url: str = "") -> str:
                 return saved_cabinet.rstrip("/")
 
             raw_url = (settings.get("subscription_url") or "").strip()
+
+            # Если ссылка подписки не настроена в настройках, но есть подписные профили,
+            # извлекаем хост/домен (например, из bobr.netphoenix.ru) для перехода в ЛК
+            if not raw_url:
+                profiles = [
+                    p for p in settings.get_profiles()
+                    if p.get("is_subscription") or p.get("sub_id") is not None or str(p.get("name", "")).lower().endswith("-sub")
+                ]
+                for p in profiles:
+                    sub_url = (p.get("subscription_url") or p.get("cabinet_url") or p.get("url") or "").strip()
+                    if sub_url:
+                        raw_url = sub_url
+                        break
+                    srv = (p.get("server") or p.get("server_host") or p.get("host") or "").strip()
+                    if not srv and p.get("endpoint"):
+                        srv = str(p.get("endpoint")).strip().split(":")[0].strip()
+                    if srv:
+                        clean_srv = re.sub(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', '', srv).split('/')[0].split(':')[0].strip()
+                        if clean_srv and not clean_srv.startswith("127.") and not clean_srv.startswith("10.") and not clean_srv.startswith("192.168."):
+                            raw_url = f"https://{clean_srv}"
+                            break
         except Exception:
             pass
 
@@ -285,7 +306,7 @@ def convert_connection_to_profile(conn: Dict[str, Any]) -> Optional[Dict[str, An
             "is_subscription": True,
             "sub_id": conn.get("id"),
             "config_content": config_text,
-            "interface": "awg0",
+            "interface": "bobr0",
             "mode": conn.get("mode", "split"),
         }
 
@@ -505,11 +526,16 @@ def get_subscription_info() -> Dict[str, Any]:
 
     status = settings.get("subscription_status", "")
     if not status:
-        status = "active" if url and profiles else "inactive"
+        status = "active" if (url or profiles) else "inactive"
 
     username = settings.get("subscription_username", "")
     if not username and isinstance(cache.get("user"), dict):
         username = str(cache["user"].get("username", ""))
+    if not username:
+        for p in profiles:
+            if p.get("username"):
+                username = str(p["username"]).strip()
+                break
 
     server_host = settings.get("subscription_server_host", "")
     if not server_host and isinstance(cache.get("server"), dict):
@@ -520,10 +546,21 @@ def get_subscription_info() -> Dict[str, Any]:
             server_host = urllib.parse.urlparse(url).netloc
         except Exception:
             pass
+    if not server_host:
+        for p in profiles:
+            sh = p.get("server") or p.get("server_host") or (p.get("endpoint", "").split(":")[0] if p.get("endpoint") else "")
+            if sh:
+                server_host = str(sh).strip()
+                break
 
     expires_at = settings.get("subscription_expires_at", "")
     if not expires_at and isinstance(cache.get("user"), dict):
         expires_at = str(cache["user"].get("expires_at", ""))
+    if not expires_at:
+        for p in profiles:
+            if p.get("expires_at"):
+                expires_at = str(p["expires_at"]).strip()
+                break
 
     cabinet_url = settings.get("subscription_cabinet_url", "")
     if not cabinet_url:

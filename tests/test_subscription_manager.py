@@ -107,7 +107,7 @@ class TestSubscriptionManager(unittest.TestCase):
         self.assertTrue(profile["is_subscription"])
         self.assertEqual(profile["sub_id"], 1)
         self.assertEqual(profile["config_content"], conn["config_text"])
-        self.assertEqual(profile["interface"], "awg0")
+        self.assertEqual(profile["interface"], "bobr0")
         self.assertEqual(profile["mode"], "split")
         self.assertEqual(profile["address"], "10.8.0.2")
 

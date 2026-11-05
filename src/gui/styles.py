@@ -372,7 +372,7 @@ QPushButton#btn_connect {
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 22px;
+    padding: 7px 14px;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-bottom: 2px solid #047857;
@@ -396,7 +396,7 @@ QPushButton#btn_disconnect {
     color: #fca5a5;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 22px;
+    padding: 7px 14px;
     border-radius: 8px;
     border: 1px solid rgba(239, 68, 68, 0.45);
 }
@@ -421,7 +421,7 @@ QPushButton#btn_connecting {
     font-size: 13px;
     border-radius: 8px;
     border: 1px solid rgba(217, 119, 6, 0.45);
-    padding: 7px 22px;
+    padding: 7px 12px;
 }
 
 /* Secondary Button */

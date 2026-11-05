@@ -22,6 +22,7 @@ from utils.platform_helper import (
     is_tunnel_adapter_busy,
     get_wintun_device_instances,
     delete_wintun_adapter,
+    cleanup_orphan_bobrdobr_adapters,
 )
 from core.amnezia import AmneziaWGLauncher
 from core.openconnect import OpenConnectLauncher
@@ -128,9 +129,9 @@ class TestAdapterAndProcessProtection(unittest.TestCase):
     def test_prepare_tunnel_adapter_free(self, mock_pids, mock_win):
         """When adapter is not present in network stack, it is ready immediately."""
         with patch("utils.platform_helper.is_network_adapter_present", return_value=False):
-            ok, iface = prepare_tunnel_adapter("awg0")
+            ok, iface = prepare_tunnel_adapter("bobr0")
             self.assertTrue(ok)
-            self.assertEqual(iface, "awg0")
+            self.assertEqual(iface, "bobr0")
 
     @patch("utils.platform_helper.is_windows", return_value=True)
     @patch("utils.platform_helper.get_bobrdobr_daemon_pids", return_value=[])
@@ -140,24 +141,24 @@ class TestAdapterAndProcessProtection(unittest.TestCase):
         # Adapter present at first check, but gone after delete_wintun_adapter
         presence_states = [True, False]
         with patch("utils.platform_helper.is_network_adapter_present", side_effect=lambda name: presence_states.pop(0) if presence_states else False):
-            ok, iface = prepare_tunnel_adapter("awg0")
+            ok, iface = prepare_tunnel_adapter("bobr0")
             self.assertTrue(ok)
-            self.assertEqual(iface, "awg0")
-            mock_delete.assert_called_once_with("awg0")
+            self.assertEqual(iface, "bobr0")
+            mock_delete.assert_called_once_with("bobr0")
 
     @patch("utils.platform_helper.is_windows", return_value=True)
     @patch("utils.platform_helper.get_bobrdobr_daemon_pids", return_value=[])
     @patch("utils.platform_helper.delete_wintun_adapter")
     def test_prepare_tunnel_adapter_fallback_on_occupied(self, mock_delete, mock_pids, mock_win):
-        """When awg0 is occupied by another process, falls back to free awg1."""
+        """When bobr0 is occupied by another process, falls back to free bobr1."""
         def adapter_presence(name):
-            # awg0 is persistently present/occupied, but awg1 is free
-            return name == "awg0"
+            # bobr0 is persistently present/occupied, but bobr1 is free
+            return name == "bobr0"
 
         with patch("utils.platform_helper.is_network_adapter_present", side_effect=adapter_presence):
-            ok, iface = prepare_tunnel_adapter("awg0")
+            ok, iface = prepare_tunnel_adapter("bobr0")
             self.assertTrue(ok)
-            self.assertEqual(iface, "awg1")
+            self.assertEqual(iface, "bobr1")
 
     def test_launcher_session_run_token_protects_reconnect(self):
         """
@@ -185,18 +186,30 @@ class TestAdapterAndProcessProtection(unittest.TestCase):
 
     @patch("utils.platform_helper.is_windows", return_value=True)
     def test_get_next_available_tunnel_adapter_rotation(self, mock_win):
-        """Verifies clean ping-pong rotation between awg0 and awg1 on reconnects."""
+        """Verifies clean ping-pong rotation between bobr0 and bobr1 on reconnects."""
         reset_adapter_rotation()
         with patch("utils.platform_helper.is_tunnel_adapter_busy", return_value=False):
-            # First call with preferred awg0 -> picks awg0
+            # First call with default bobr0 -> picks bobr0
+            first = get_next_available_tunnel_adapter("bobr0")
+            self.assertEqual(first, "bobr0")
+
+            # Rapid reconnect / hot switch -> rotates to bobr1
+            second = get_next_available_tunnel_adapter("bobr0")
+            self.assertEqual(second, "bobr1")
+
+            # Next reconnect -> rotates back to bobr0
+            third = get_next_available_tunnel_adapter("bobr0")
+            self.assertEqual(third, "bobr0")
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_get_next_available_tunnel_adapter_legacy_rotation(self, mock_win):
+        """Verifies legacy rotation between awg0 and awg1 when preferred='awg0'."""
+        reset_adapter_rotation()
+        with patch("utils.platform_helper.is_tunnel_adapter_busy", return_value=False):
             first = get_next_available_tunnel_adapter("awg0")
             self.assertEqual(first, "awg0")
-
-            # Rapid reconnect / hot switch -> rotates to awg1
             second = get_next_available_tunnel_adapter("awg0")
             self.assertEqual(second, "awg1")
-
-            # Next reconnect -> rotates back to awg0
             third = get_next_available_tunnel_adapter("awg0")
             self.assertEqual(third, "awg0")
 
@@ -206,70 +219,117 @@ class TestAdapterAndProcessProtection(unittest.TestCase):
         reset_adapter_rotation()
         with patch("utils.platform_helper.is_network_adapter_present", return_value=False), \
              patch("utils.platform_helper.get_wintun_device_instances", return_value=["SWD\\WINTUN\\{GUID1}"]), \
-             patch("utils.platform_helper.get_wintun_interface_for_instance", return_value="awg0"):
+             patch("utils.platform_helper.get_wintun_interface_for_instance", return_value="bobr0"):
 
-            # awg0 is registered in SWD\WINTUN
-            self.assertTrue(is_tunnel_adapter_busy("awg0"))
-            self.assertFalse(is_tunnel_adapter_busy("awg1"))
+            # bobr0 is registered in SWD\WINTUN
+            self.assertTrue(is_tunnel_adapter_busy("bobr0"))
+            self.assertFalse(is_tunnel_adapter_busy("bobr1"))
 
-            # get_next_available_tunnel_adapter should skip awg0 and choose awg1
-            cand = get_next_available_tunnel_adapter("awg0")
-            self.assertEqual(cand, "awg1")
+            # get_next_available_tunnel_adapter should skip bobr0 and choose bobr1
+            cand = get_next_available_tunnel_adapter("bobr0")
+            self.assertEqual(cand, "bobr1")
 
     @patch("utils.platform_helper.is_windows", return_value=True)
     def test_get_next_available_tunnel_adapter_skips_multiple_busy(self, mock_win):
-        """If awg0 and awg1 are busy, dynamically selects awg2."""
+        """If bobr0 and bobr1 are busy, dynamically selects bobr2."""
         reset_adapter_rotation()
         def mock_busy(name):
-            return name in ("awg0", "awg1")
+            return name in ("bobr0", "bobr1")
 
         with patch("utils.platform_helper.is_tunnel_adapter_busy", side_effect=mock_busy):
-            cand = get_next_available_tunnel_adapter("awg0")
-            self.assertEqual(cand, "awg2")
+            cand = get_next_available_tunnel_adapter("bobr0")
+            self.assertEqual(cand, "bobr2")
 
     @patch("core.amnezia.is_windows", return_value=True)
     def test_amnezia_start_connection_uses_dynamic_rotated_adapter(self, mock_win):
         """Verifies AmneziaWGLauncher.start_connection invokes get_next_available_tunnel_adapter and sets interface."""
         launcher = AmneziaWGLauncher()
-        with patch("core.amnezia.get_next_available_tunnel_adapter", return_value="awg1") as mock_get_iface, \
-             patch("core.amnezia.prepare_tunnel_adapter", return_value=(True, "awg1")), \
+        with patch("core.amnezia.get_next_available_tunnel_adapter", return_value="bobr1") as mock_get_iface, \
+             patch("core.amnezia.prepare_tunnel_adapter", return_value=(True, "bobr1")), \
              patch("core.amnezia.find_binary", return_value=r"C:\bin\amneziawg-go.exe"), \
              patch.object(launcher, "_spawn_process", return_value=True) as mock_spawn:
 
             ok = launcher.start_connection(
                 config_content="[Interface]\nPrivateKey = aaaa\nAddress = 10.0.0.2/32\n",
-                interface_name="awg0"
+                interface_name="bobr0"
             )
             self.assertTrue(ok)
-            mock_get_iface.assert_called_with("awg0")
-            self.assertEqual(launcher.interface_name, "awg1")
-            # Verify command line has '-name' 'awg1'
+            mock_get_iface.assert_called_with("bobr0")
+            self.assertEqual(launcher.interface_name, "bobr1")
+            # Verify command line has '-name' 'bobr1'
             called_cmd = mock_spawn.call_args[1]["cmd"]
             self.assertIn("-name", called_cmd)
             idx = called_cmd.index("-name")
-            self.assertEqual(called_cmd[idx + 1], "awg1")
+            self.assertEqual(called_cmd[idx + 1], "bobr1")
 
     @patch("utils.platform_helper.is_windows", return_value=True)
     def test_delete_wintun_adapter_targets_only_specified_interface(self, mock_win):
-        """Verifies delete_wintun_adapter('awg0') only removes the device matching awg0."""
-        instances = ["SWD\\WINTUN\\{GUID_AWG0}", "SWD\\WINTUN\\{GUID_AWG1}"]
+        """Verifies delete_wintun_adapter('bobr0') only removes the device matching bobr0."""
+        instances = ["SWD\\WINTUN\\{GUID_BOBR0}", "SWD\\WINTUN\\{GUID_BOBR1}"]
 
         def mock_iface(inst):
-            if "{GUID_AWG0}" in inst:
-                return "awg0"
-            return "awg1"
+            if "{GUID_BOBR0}" in inst:
+                return "bobr0"
+            return "bobr1"
 
         with patch("utils.platform_helper.get_wintun_device_instances", return_value=instances), \
              patch("utils.platform_helper.get_wintun_interface_for_instance", side_effect=mock_iface), \
              patch("utils.platform_helper.is_network_adapter_present", return_value=False), \
              patch("utils.platform_helper.run_silent_cmd") as mock_cmd:
 
-            delete_wintun_adapter("awg0")
-            # Only GUID_AWG0 should be removed!
+            delete_wintun_adapter("bobr0")
+            # Only GUID_BOBR0 should be removed!
             called_args = [call[0][0] for call in mock_cmd.call_args_list]
             self.assertEqual(len(called_args), 1)
-            self.assertIn("SWD\\WINTUN\\{GUID_AWG0}", called_args[0])
-            self.assertNotIn("SWD\\WINTUN\\{GUID_AWG1}", str(called_args))
+            self.assertIn("SWD\\WINTUN\\{GUID_BOBR0}", called_args[0])
+            self.assertNotIn("SWD\\WINTUN\\{GUID_BOBR1}", str(called_args))
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_cleanup_orphan_bobrdobr_adapters_preserves_active(self, mock_win):
+        """
+        cleanup_orphan_bobrdobr_adapters must remove orphaned bobr* and legacy awg* adapters
+        while strictly preserving the active running session adapter and ignoring third-party adapters.
+        """
+        instances = [
+            "SWD\\WINTUN\\{ORPHAN_BOBR0}",
+            "SWD\\WINTUN\\{ACTIVE_BOBR1}",
+            "SWD\\WINTUN\\{LEGACY_AWG0}",
+            "SWD\\WINTUN\\{THIRD_PARTY_WG}"
+        ]
+
+        def mock_iface(inst):
+            if "{ORPHAN_BOBR0}" in inst:
+                return "bobr0"
+            if "{ACTIVE_BOBR1}" in inst:
+                return "bobr1"
+            if "{LEGACY_AWG0}" in inst:
+                return "awg0"
+            if "{THIRD_PARTY_WG}" in inst:
+                return "wg-work0"
+            return None
+
+        with patch("utils.platform_helper.get_wintun_device_instances", return_value=instances), \
+             patch("utils.platform_helper.get_wintun_interface_for_instance", side_effect=mock_iface), \
+             patch("utils.platform_helper.run_silent_cmd") as mock_cmd:
+
+            # bobr1 is active!
+            cleanup_orphan_bobrdobr_adapters(active_interfaces=["bobr1"], asynchronous=False)
+
+            called_cmds = [call[0][0] for call in mock_cmd.call_args_list]
+            removed_instances = []
+            for cmd in called_cmds:
+                if "/remove-device" in cmd:
+                    removed_instances.append(cmd[2])
+
+            # ORPHAN_BOBR0 and LEGACY_AWG0 must be removed!
+            self.assertIn("SWD\\WINTUN\\{ORPHAN_BOBR0}", removed_instances)
+            self.assertIn("SWD\\WINTUN\\{LEGACY_AWG0}", removed_instances)
+
+            # ACTIVE_BOBR1 must NOT be removed!
+            self.assertNotIn("SWD\\WINTUN\\{ACTIVE_BOBR1}", removed_instances)
+
+            # THIRD_PARTY_WG must NOT be touched!
+            self.assertNotIn("SWD\\WINTUN\\{THIRD_PARTY_WG}", removed_instances)
 
 
 if __name__ == "__main__":

@@ -100,8 +100,8 @@ class VPNLauncherBase(QObject):
     def start_connection(self, **kwargs: Any) -> bool:
         """Start the VPN connection with protocol-specific parameters."""
         if self.is_running() and not self._stop_requested.is_set():
-            self.log("Previous process is still active. Waiting for clean shutdown...", "sys")
-            self.stop_connection(wait=True)
+            self.log("Previous process is still active. Initiating non-blocking shutdown...", "sys")
+            self.stop_connection(wait=False)
         return False
 
     def stop_connection(self, wait: bool = False) -> None:
@@ -211,13 +211,10 @@ class VPNLauncherBase(QObject):
         stdin_data: Optional[str] = None
     ) -> bool:
         """Spawns binary in an isolated subprocess with realtime stdout/stderr streaming."""
-        if self.is_running() and not self._stop_requested.is_set():
-            self.log("Previous process is still active. Waiting for clean shutdown...", "sys")
-            self.stop_connection(wait=True)
-
+        # If previous process is still running, initiate asynchronous stop without blocking the UI thread
         if self.is_running():
-            self.log("Process is already running.", "sys")
-            return False
+            self.log("Stopping previous process asynchronously...", "sys")
+            self.stop_connection(wait=False)
 
         self._stop_requested.clear()
         self._session_run_id += 1

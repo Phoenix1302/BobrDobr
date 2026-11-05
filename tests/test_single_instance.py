@@ -19,6 +19,7 @@ from utils.single_instance import (
     release_single_instance,
     activate_existing_window,
     show_already_running_message,
+    _create_mutex_security_attributes,
 )
 from utils.config_store import ConfigStore
 
@@ -61,6 +62,52 @@ class TestSingleInstanceUnified(unittest.TestCase):
             third_run = check_single_instance(show_dialog=True)
             self.assertTrue(third_run)
 
+    def test_access_denied_treated_as_duplicate(self):
+        """
+        Tests that when CreateMutexW fails with ERROR_ACCESS_DENIED (5)
+        (e.g., standard user running while administrator holds mutex),
+        it is recognized as an active instance, activates window, and returns False.
+        """
+        release_single_instance()
+
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ACCESS_DENIED = 5
+
+        with patch("utils.single_instance.activate_existing_window") as mock_activate, \
+             patch("utils.single_instance.show_already_running_message") as mock_msg, \
+             patch.object(kernel32, "CreateMutexW", return_value=0), \
+             patch.object(kernel32, "GetLastError", return_value=ERROR_ACCESS_DENIED):
+
+            result = check_single_instance(show_dialog=True)
+            self.assertFalse(result)
+            mock_activate.assert_called_once()
+            mock_msg.assert_called_once()
+
+    def test_already_exists_treated_as_duplicate(self):
+        """
+        Tests that when CreateMutexW returns ERROR_ALREADY_EXISTS (183),
+        it closes the duplicate handle and returns False.
+        """
+        release_single_instance()
+
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        dummy_handle = 9999
+
+        with patch("utils.single_instance.activate_existing_window") as mock_activate, \
+             patch("utils.single_instance.show_already_running_message") as mock_msg, \
+             patch.object(kernel32, "CreateMutexW", return_value=dummy_handle), \
+             patch.object(kernel32, "GetLastError", return_value=ERROR_ALREADY_EXISTS), \
+             patch.object(kernel32, "CloseHandle") as mock_close:
+
+            result = check_single_instance(show_dialog=False)
+            self.assertFalse(result)
+            mock_activate.assert_called_once()
+            mock_msg.assert_not_called()
+            mock_close.assert_called_with(dummy_handle)
+
     def test_legacy_mutex_detection(self):
         """
         Tests that if an older version holds the legacy mutex, the unified check
@@ -84,6 +131,60 @@ class TestSingleInstanceUnified(unittest.TestCase):
             if h_legacy:
                 kernel32.CloseHandle(h_legacy)
             release_single_instance()
+
+    def test_legacy_mutex_access_denied_detection(self):
+        """
+        Tests that if opening a legacy mutex fails with ERROR_ACCESS_DENIED,
+        it is recognized as an active instance and returns False.
+        """
+        release_single_instance()
+
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ACCESS_DENIED = 5
+
+        with patch("utils.single_instance.activate_existing_window") as mock_activate, \
+             patch.object(kernel32, "CreateMutexW", return_value=1234), \
+             patch.object(kernel32, "OpenMutexW", return_value=0), \
+             patch.object(kernel32, "GetLastError", side_effect=[0, ERROR_ACCESS_DENIED]):
+
+            is_single = check_single_instance(show_dialog=False)
+            self.assertFalse(is_single)
+            mock_activate.assert_called_once()
+
+    def test_security_attributes_sddl_creation(self):
+        """Tests that _create_mutex_security_attributes produces valid SA struct with SDDL."""
+        sa, cleanup = _create_mutex_security_attributes()
+        self.assertIsNotNone(sa)
+        self.assertIsNotNone(sa.lpSecurityDescriptor)
+        self.assertEqual(sa.bInheritHandle, False)
+        if cleanup:
+            cleanup()
+
+    def test_security_attributes_fallback_to_null_dacl(self):
+        """Tests that if SDDL conversion fails, fallback to InitializeSecurityDescriptor + NULL DACL succeeds."""
+        import ctypes
+        advapi32 = ctypes.windll.advapi32
+        with patch.object(advapi32, "ConvertStringSecurityDescriptorToSecurityDescriptorW", return_value=0):
+            sa, cleanup = _create_mutex_security_attributes()
+            self.assertIsNotNone(sa)
+            self.assertIsNotNone(sa.lpSecurityDescriptor)
+            if cleanup:
+                cleanup()
+
+    def test_activate_existing_window_fallback_broadcast(self):
+        """Tests that activate_existing_window falls back to AllowSetForegroundWindow and WM_BOBRDOBR_ACTIVATE broadcast."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        with patch.object(user32, "AllowSetForegroundWindow") as mock_asfw, \
+             patch.object(user32, "PostMessageW") as mock_pm, \
+             patch.object(user32, "EnumWindows") as mock_ew:
+
+            res = activate_existing_window()
+            self.assertFalse(res)
+            mock_asfw.assert_any_call(0xFFFFFFFF)
+            self.assertTrue(mock_pm.called)
+            self.assertTrue(mock_ew.called)
 
     def test_activate_existing_window_ipc(self):
         """Tests that activate_existing_window connects to QLocalServer and delivers activation request."""

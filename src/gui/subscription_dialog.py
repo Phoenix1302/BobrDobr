@@ -125,8 +125,8 @@ class SubscriptionManageDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Управление подпиской — BobrDobr VPN")
-        self.resize(600, 680)
-        self.setMinimumSize(540, 560)
+        self.resize(680, 700)
+        self.setMinimumSize(660, 620)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0c1316;
@@ -235,32 +235,39 @@ class SubscriptionManageDialog(QDialog):
         url_row.setSpacing(8)
 
         self.input_url = QLineEdit()
-        self.input_url.setReadOnly(True)
+        self.input_url.setReadOnly(False)
+        self.input_url.setClearButtonEnabled(True)
+        self.input_url.setPlaceholderText("Вставьте ссылку на подписку (https://...)")
         self.input_url.setFixedHeight(36)
         self.input_url.setStyleSheet("""
             QLineEdit {
                 background-color: #0f161a;
-                color: #94a3b8;
-                border: 1px solid rgba(255, 255, 255, 0.10);
+                color: #e2e8f0;
+                border: 1px solid rgba(255, 255, 255, 0.12);
                 border-radius: 6px;
                 padding: 0 10px;
                 font-family: monospace;
                 font-size: 12px;
             }
+            QLineEdit:focus {
+                border: 1px solid #c084fc;
+                color: #ffffff;
+            }
         """)
+        self.input_url.textChanged.connect(self._on_url_text_changed)
         url_row.addWidget(self.input_url, stretch=1)
 
-        self.btn_copy_url = QPushButton("📋 Скопировать")
-        self.btn_copy_url.setCursor(Qt.PointingHandCursor)
-        self.btn_copy_url.setFixedHeight(36)
-        self.btn_copy_url.setFixedWidth(135)
-        self.btn_copy_url.setStyleSheet("""
+        self.btn_paste_url = QPushButton("📥 Вставить")
+        self.btn_paste_url.setCursor(Qt.PointingHandCursor)
+        self.btn_paste_url.setFixedHeight(36)
+        self.btn_paste_url.setFixedWidth(100)
+        self.btn_paste_url.setStyleSheet("""
             QPushButton {
                 background-color: #1e293b;
                 color: #e2e8f0;
                 border: 1px solid #334155;
                 border-radius: 6px;
-                padding: 0 14px;
+                padding: 0 10px;
                 font-size: 12px;
                 font-weight: 600;
             }
@@ -270,6 +277,31 @@ class SubscriptionManageDialog(QDialog):
                 border-color: #475569;
             }
         """)
+        self.btn_paste_url.setToolTip("Вставить ссылку на подписку из буфера обмена")
+        self.btn_paste_url.clicked.connect(self._on_paste_url_clicked)
+        url_row.addWidget(self.btn_paste_url)
+
+        self.btn_copy_url = QPushButton("📋 Скопировать")
+        self.btn_copy_url.setCursor(Qt.PointingHandCursor)
+        self.btn_copy_url.setFixedHeight(36)
+        self.btn_copy_url.setFixedWidth(120)
+        self.btn_copy_url.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #e2e8f0;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 0 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #ffffff;
+                border-color: #475569;
+            }
+        """)
+        self.btn_copy_url.setToolTip("Скопировать полную ссылку подписки в буфер обмена")
         self.btn_copy_url.clicked.connect(self._on_copy_url_clicked)
         url_row.addWidget(self.btn_copy_url)
         info_layout.addLayout(url_row)
@@ -313,21 +345,21 @@ class SubscriptionManageDialog(QDialog):
 
         # 4. Нижняя панель действий
         buttons_row = QHBoxLayout()
-        buttons_row.setContentsMargins(0, 4, 0, 0)
-        buttons_row.setSpacing(12)
+        buttons_row.setContentsMargins(0, 8, 0, 0)
+        buttons_row.setSpacing(10)
 
-        # Кнопка удаления подписки (Danger)
+        # Левая часть: Кнопка удаления подписки (Danger)
         self.btn_delete_sub = QPushButton("🗑 Удалить подписку")
         self.btn_delete_sub.setCursor(Qt.PointingHandCursor)
         self.btn_delete_sub.setFixedHeight(38)
-        self.btn_delete_sub.setMinimumWidth(160)
+        self.btn_delete_sub.setMinimumWidth(150)
         self.btn_delete_sub.setStyleSheet("""
             QPushButton {
                 background-color: rgba(239, 68, 68, 0.12);
                 color: #fca5a5;
                 border: 1px solid rgba(239, 68, 68, 0.35);
                 border-radius: 8px;
-                padding: 6px 16px;
+                padding: 6px 14px;
                 font-weight: 700;
                 font-size: 12px;
             }
@@ -341,14 +373,19 @@ class SubscriptionManageDialog(QDialog):
         self.btn_delete_sub.clicked.connect(self._on_delete_sub_clicked)
         buttons_row.addWidget(self.btn_delete_sub)
 
-        buttons_row.addStretch()
+        buttons_row.addStretch(1)
+
+        # Правая группа кнопок: [Личный кабинет ↗] [🔄 Обновить подписку] [Закрыть]
+        right_btn_layout = QHBoxLayout()
+        right_btn_layout.setSpacing(10)
+        right_btn_layout.setContentsMargins(0, 0, 0, 0)
 
         # Кнопка перехода в Личный Кабинет
         self.btn_cabinet = QPushButton("Личный кабинет ↗")
         self.btn_cabinet.setObjectName("btn_cabinet")
         self.btn_cabinet.setCursor(Qt.PointingHandCursor)
         self.btn_cabinet.setFixedHeight(38)
-        self.btn_cabinet.setMinimumWidth(150)
+        self.btn_cabinet.setMinimumWidth(140)
         self.btn_cabinet.setStyleSheet("""
             QPushButton#btn_cabinet {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0284c7, stop:1 #0369a1);
@@ -356,7 +393,7 @@ class SubscriptionManageDialog(QDialog):
                 border: 1px solid rgba(255, 255, 255, 0.16);
                 border-bottom: 2px solid #075985;
                 border-radius: 8px;
-                padding: 6px 16px;
+                padding: 6px 14px;
                 font-weight: 700;
                 font-size: 12px;
             }
@@ -371,13 +408,13 @@ class SubscriptionManageDialog(QDialog):
             }
         """)
         self.btn_cabinet.clicked.connect(self._on_open_cabinet_clicked)
-        buttons_row.addWidget(self.btn_cabinet)
+        right_btn_layout.addWidget(self.btn_cabinet)
 
         # Кнопка ручной синхронизации (Primary/Purple)
         self.btn_sync = QPushButton("🔄 Обновить подписку")
         self.btn_sync.setCursor(Qt.PointingHandCursor)
         self.btn_sync.setFixedHeight(38)
-        self.btn_sync.setMinimumWidth(170)
+        self.btn_sync.setMinimumWidth(160)
         self.btn_sync.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9333ea, stop:1 #7e22ce);
@@ -385,7 +422,7 @@ class SubscriptionManageDialog(QDialog):
                 border: 1px solid rgba(255, 255, 255, 0.16);
                 border-bottom: 2px solid #6b21a8;
                 border-radius: 8px;
-                padding: 6px 18px;
+                padding: 6px 16px;
                 font-weight: 700;
                 font-size: 12px;
             }
@@ -400,20 +437,20 @@ class SubscriptionManageDialog(QDialog):
             }
         """)
         self.btn_sync.clicked.connect(self._on_sync_clicked)
-        buttons_row.addWidget(self.btn_sync)
+        right_btn_layout.addWidget(self.btn_sync)
 
         # Кнопка закрытия (Secondary)
         self.btn_close = QPushButton("Закрыть")
         self.btn_close.setCursor(Qt.PointingHandCursor)
         self.btn_close.setFixedHeight(38)
-        self.btn_close.setMinimumWidth(110)
+        self.btn_close.setMinimumWidth(95)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background-color: #1a252a;
                 color: #cbd5e1;
                 border: 1px solid #334852;
                 border-radius: 8px;
-                padding: 6px 18px;
+                padding: 6px 16px;
                 font-weight: 600;
                 font-size: 12px;
             }
@@ -424,8 +461,9 @@ class SubscriptionManageDialog(QDialog):
             }
         """)
         self.btn_close.clicked.connect(self.reject)
-        buttons_row.addWidget(self.btn_close)
+        right_btn_layout.addWidget(self.btn_close)
 
+        buttons_row.addLayout(right_btn_layout)
         main_layout.addLayout(buttons_row)
 
     def _refresh_data(self):
@@ -433,8 +471,14 @@ class SubscriptionManageDialog(QDialog):
         info = SubscriptionManager.get_info()
         self._full_url = info.get("url", "")
         self._cabinet_url = info.get("cabinet_url") or SubscriptionManager.get_cabinet_url(self._full_url)
-        self.input_url.setText(mask_subscription_url(self._full_url))
-        self.input_url.setToolTip(self._full_url if self._full_url else "Ссылка отсутствует")
+        if hasattr(self, "input_url"):
+            if self._full_url:
+                self.input_url.setText(mask_subscription_url(self._full_url))
+                self.input_url.setToolTip(self._full_url)
+            else:
+                self.input_url.setText("")
+                self.input_url.setPlaceholderText("Вставьте ссылку на подписку (https://...)")
+                self.input_url.setToolTip("Ссылка не настроена. Вставьте ссылку для синхронизации.")
 
         if hasattr(self, "btn_cabinet"):
             if self._cabinet_url:
@@ -584,7 +628,7 @@ class SubscriptionManageDialog(QDialog):
                 lbl_icon.setText("⚡")
             proto_badge_txt = "AmneziaWG"
             proto_badge_style = "color: #fbbf24; background-color: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35);"
-            gateway = profile.get("endpoint") or profile.get("address") or "awg0"
+            gateway = profile.get("endpoint") or profile.get("address") or "bobr0"
         else:
             pix = get_openconnect_pixmap(16, 16)
             if not pix.isNull():
@@ -647,54 +691,88 @@ class SubscriptionManageDialog(QDialog):
         else:
             QMessageBox.information(self, "Личный кабинет", "Ссылка на личный кабинет не определена.")
 
+    def _on_url_text_changed(self, text: str):
+        cleaned = text.strip()
+        if cleaned and "••••" not in cleaned:
+            self._full_url = cleaned
+            settings.set("subscription_url", cleaned)
+            new_cabinet = SubscriptionManager.get_cabinet_url(cleaned)
+            if new_cabinet:
+                self._cabinet_url = new_cabinet
+                if hasattr(self, "btn_cabinet"):
+                    self.btn_cabinet.setEnabled(True)
+                    self.btn_cabinet.setToolTip(f"Перейти в личный кабинет:\n{self._cabinet_url}")
+
+    def _on_paste_url_clicked(self):
+        clipboard = QApplication.clipboard()
+        text = (clipboard.text() if clipboard else "").strip()
+        if not text:
+            return
+        self._full_url = text
+        settings.set("subscription_url", text)
+        if hasattr(self, "input_url"):
+            self.input_url.setText(text)
+            self.input_url.setToolTip(text)
+        self._refresh_data()
+
     def _on_copy_url_clicked(self):
         """Копирует полную ссылку подписки в системный буфер обмена."""
-        if not self._full_url:
+        url_to_copy = self._full_url or (self.input_url.text().strip() if hasattr(self, "input_url") else "")
+        if not url_to_copy or ("••••" in url_to_copy and not self._full_url):
             return
         clipboard = QApplication.clipboard()
         if clipboard:
-            clipboard.setText(self._full_url)
-        self.btn_copy_url.setText("✔ Скопировано!")
-        self.btn_copy_url.setStyleSheet("""
-            QPushButton {
-                background-color: #047857;
-                color: #ffffff;
-                border: 1px solid #10b981;
-                border-radius: 6px;
-                padding: 0 14px;
-                font-size: 12px;
-                font-weight: 700;
-            }
-        """)
-        QTimer.singleShot(2000, self._restore_copy_btn)
+            clipboard.setText(self._full_url if self._full_url else url_to_copy)
+        if hasattr(self, "btn_copy_url"):
+            self.btn_copy_url.setText("✔ Скопировано!")
+            self.btn_copy_url.setStyleSheet("""
+                QPushButton {
+                    background-color: #047857;
+                    color: #ffffff;
+                    border: 1px solid #10b981;
+                    border-radius: 6px;
+                    padding: 0 10px;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+            """)
+            QTimer.singleShot(2000, self._restore_copy_btn)
 
     def _restore_copy_btn(self):
         try:
-            self.btn_copy_url.setText("📋 Скопировать")
-            self.btn_copy_url.setStyleSheet("""
-                QPushButton {
-                    background-color: #1e293b;
-                    color: #e2e8f0;
-                    border: 1px solid #334155;
-                    border-radius: 6px;
-                    padding: 0 14px;
-                    font-size: 12px;
-                    font-weight: 600;
-                }
-                QPushButton:hover {
-                    background-color: #334155;
-                    color: #ffffff;
-                    border-color: #475569;
-                }
-            """)
+            if hasattr(self, "btn_copy_url"):
+                self.btn_copy_url.setText("📋 Скопировать")
+                self.btn_copy_url.setStyleSheet("""
+                    QPushButton {
+                        background-color: #1e293b;
+                        color: #e2e8f0;
+                        border: 1px solid #334155;
+                        border-radius: 6px;
+                        padding: 0 10px;
+                        font-size: 12px;
+                        font-weight: 600;
+                    }
+                    QPushButton:hover {
+                        background-color: #334155;
+                        color: #ffffff;
+                        border-color: #475569;
+                    }
+                """)
         except RuntimeError:
             pass
 
     def _on_sync_clicked(self):
         """Вызывает синхронизацию подписки и обновляет диалог и главное окно."""
-        url = self._full_url or (settings.get("subscription_url") or "").strip()
+        input_text = self.input_url.text().strip() if hasattr(self, "input_url") else ""
+        if input_text and "••••" not in input_text:
+            url = input_text
+            self._full_url = input_text
+            settings.set("subscription_url", input_text)
+        else:
+            url = self._full_url or (settings.get("subscription_url") or "").strip()
+
         if not url:
-            QMessageBox.warning(self, "Ошибка", "Ссылка на подписку не найдена.")
+            QMessageBox.warning(self, "Ошибка", "Ссылка на подписку не найдена. Вставьте ссылку на подписку в поле выше.")
             return
 
         self.btn_sync.setEnabled(False)

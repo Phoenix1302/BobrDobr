@@ -26,7 +26,7 @@ from gui.profile_dialog import ProfileDialog, PasswordPromptDialog
 from gui.subscription_dialog import SubscriptionManageDialog
 from gui.log_viewer import LogViewer
 from gui.installer_dialog import InstallDialog, UninstallDialog, UpdateDialog, GitHubUpdateDialog
-from utils.platform_helper import is_windows, is_admin, get_base_dir, ensure_persistent_binaries, init_windows_job_object
+from utils.platform_helper import is_windows, is_admin, get_base_dir, ensure_persistent_binaries, init_windows_job_object, cleanup_orphan_bobrdobr_adapters
 from utils.installer_helper import is_installed_mode, has_installed_version
 from utils.version import APP_VERSION, APP_TITLE, GITHUB_REPO, GITHUB_RELEASES_URL
 from utils.config_store import settings
@@ -67,7 +67,30 @@ class MainWindow(QMainWindow):
         if is_windows():
             try:
                 import ctypes
-                self._wm_activate_msg = ctypes.windll.user32.RegisterWindowMessageW("BobrDobr_VPN_Activate_Window_Msg")
+                from ctypes import wintypes
+                user32 = ctypes.windll.user32
+                self._wm_activate_msg = user32.RegisterWindowMessageW("BobrDobr_VPN_Activate_Window_Msg")
+                if self._wm_activate_msg:
+                    # Allow unelevated (standard user / Medium Integrity) processes to send this
+                    # message across UIPI (User Interface Privilege Isolation) to an Administrator window
+                    MSGFLT_ALLOW = 1
+                    try:
+                        user32.ChangeWindowMessageFilterEx.argtypes = [
+                            wintypes.HWND,
+                            wintypes.UINT,
+                            wintypes.DWORD,
+                            ctypes.c_void_p,
+                        ]
+                        user32.ChangeWindowMessageFilterEx.restype = wintypes.BOOL
+                        user32.ChangeWindowMessageFilterEx(int(self.winId()), self._wm_activate_msg, MSGFLT_ALLOW, None)
+                    except Exception:
+                        pass
+                    try:
+                        user32.ChangeWindowMessageFilter.argtypes = [wintypes.UINT, wintypes.DWORD]
+                        user32.ChangeWindowMessageFilter.restype = wintypes.BOOL
+                        user32.ChangeWindowMessageFilter(self._wm_activate_msg, MSGFLT_ALLOW)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -89,15 +112,15 @@ class MainWindow(QMainWindow):
         ensure_persistent_binaries()
 
         # Восстановление геометрии
-        saved_w = settings.get("window_width", 840)
-        saved_h = settings.get("window_height", 820)
+        saved_w = settings.get("window_width", 900)
+        saved_h = settings.get("window_height", 840)
         try:
-            w = max(int(saved_w), 840)
-            h = max(int(saved_h), 780)
+            w = max(int(saved_w), 900)
+            h = max(int(saved_h), 800)
         except (ValueError, TypeError):
-            w, h = 840, 820
+            w, h = 900, 840
         self.resize(w, h)
-        self.setMinimumSize(780, 620)
+        self.setMinimumSize(880, 640)
 
         # Иконка окна и трея
         self.beaver_icon_path = self._resolve_icon_path()
@@ -140,6 +163,12 @@ class MainWindow(QMainWindow):
         self._sub_sync_thread: Optional[SubscriptionSyncThread] = None
         if (settings.get("subscription_url") or "").strip():
             QTimer.singleShot(1500, self._auto_sync_subscription)
+
+        # Периодический фоновый сборщик мусора осиротевших Wintun адаптеров bobr* (каждые 3 минуты)
+        self._adapter_gc_timer = QTimer(self)
+        self._adapter_gc_timer.setInterval(180_000)
+        self._adapter_gc_timer.timeout.connect(self._run_periodic_adapter_cleanup)
+        self._adapter_gc_timer.start()
 
         self._init_ui()
         self._wire_signals()
@@ -717,7 +746,7 @@ class MainWindow(QMainWindow):
         self.profiles_container = QWidget()
         self.profiles_container.setStyleSheet("background: transparent;")
         self.profiles_layout = QVBoxLayout(self.profiles_container)
-        self.profiles_layout.setContentsMargins(10, 8, 10, 8)
+        self.profiles_layout.setContentsMargins(10, 8, 14, 8)
         self.profiles_layout.setSpacing(14)
 
         scroll_area.setWidget(self.profiles_container)
@@ -1215,7 +1244,7 @@ class MainWindow(QMainWindow):
         msg.exec()
         if msg.clickedButton() == btn_del:
             if self.active_profile_id == profile_id:
-                self._on_disconnect_profile(profile_id, wait=True)
+                self._on_disconnect_profile(profile_id, wait=False)
             settings.delete_profile(profile_id)
             self._render_profiles()
 
@@ -1304,7 +1333,7 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
         # 2. Стартуем новый профиль.
-        # Благодаря ротации адаптеров AmneziaWG (awg0 -> awg1 -> awg0)
+        # Благодаря ротации адаптеров AmneziaWG (bobr0 -> bobr1 -> bobr0)
         # новый туннель получит следующий чистый интерфейс и поднимется параллельно,
         # не дожидаясь полного PnP-демонтажа старого устройства Windows.
         # При переключении между AmneziaWG и OpenConnect они используют разные сетевые модули,
@@ -1337,7 +1366,7 @@ class MainWindow(QMainWindow):
         if proto == "amnezia":
             content = profile.get("config_content", "").strip()
             cfg_path = profile.get("config_path", "").strip()
-            iface = profile.get("interface", "").strip() or "awg0"
+            iface = profile.get("interface", "").strip() or "bobr0"
             obf = profile.get("obfuscation", {})
 
             # Если нет сохраненного текста конфигурации и нет исходного файла
@@ -1577,6 +1606,13 @@ class MainWindow(QMainWindow):
                 self.tray_icon.hide()
             event.accept()
             QApplication.instance().quit()
+
+    def _run_periodic_adapter_cleanup(self):
+        """Asynchronously cleans up orphaned Wintun adapters named bobr* or legacy awg*."""
+        active_ifaces = []
+        if hasattr(self, "amnezia_launcher") and self.amnezia_launcher.is_running():
+            active_ifaces.append(self.amnezia_launcher.interface_name)
+        cleanup_orphan_bobrdobr_adapters(active_interfaces=active_ifaces, asynchronous=True)
 
     # ==========================================
     # GitHub Updates

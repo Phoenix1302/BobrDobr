@@ -115,6 +115,24 @@ class TestSubscriptionCabinetURL(unittest.TestCase):
             "https://facade.test.com"
         )
 
+    def test_extract_cabinet_url_from_openconnect_subscription_profile(self):
+        settings.data["profiles"] = [
+            {"id": "p1", "name": "NL-Server-sub", "is_subscription": True, "server": "bobr.netphoenix.ru", "port": 443}
+        ]
+        self.assertEqual(get_cabinet_url(), "https://bobr.netphoenix.ru")
+
+    def test_extract_cabinet_url_from_amnezia_subscription_profile(self):
+        settings.data["profiles"] = [
+            {"id": "p2", "name": "DE-Amnezia-sub", "is_subscription": True, "endpoint": "bobr.netphoenix.ru:51820"}
+        ]
+        self.assertEqual(get_cabinet_url(), "https://bobr.netphoenix.ru")
+
+    def test_extract_cabinet_url_skips_private_ips(self):
+        settings.data["profiles"] = [
+            {"id": "p3", "name": "Local-sub", "is_subscription": True, "endpoint": "10.0.0.1:51820"}
+        ]
+        self.assertEqual(get_cabinet_url(), "")
+
 
 class TestSubscriptionManagerCabinetIntegration(unittest.TestCase):
     """Тестирование сохранения и очистки cabinet_url в жизненном цикле подписки."""
@@ -221,6 +239,22 @@ class TestSubscriptionDialogCabinetButton(unittest.TestCase):
         mock_open_url.assert_called_once()
         qurl_arg = mock_open_url.call_args[0][0]
         self.assertEqual(qurl_arg.toString(), "https://persona.netphoenix.ru")
+
+    def test_dialog_url_input_editable_and_text_change_updates_cabinet(self):
+        class DummyDialog:
+            def __init__(self):
+                self._full_url = ""
+                self._cabinet_url = ""
+                self.input_url = MagicMock()
+                self.btn_cabinet = MagicMock()
+            _on_url_text_changed = SubscriptionManageDialog._on_url_text_changed
+
+        dlg = DummyDialog()
+        dlg._on_url_text_changed("https://bobr.netphoenix.ru/api/v1/sub/NEW_SECRET_TOKEN")
+        self.assertEqual(dlg._full_url, "https://bobr.netphoenix.ru/api/v1/sub/NEW_SECRET_TOKEN")
+        self.assertEqual(settings.data.get("subscription_url"), "https://bobr.netphoenix.ru/api/v1/sub/NEW_SECRET_TOKEN")
+        self.assertEqual(dlg._cabinet_url, "https://bobr.netphoenix.ru")
+        dlg.btn_cabinet.setEnabled.assert_called_with(True)
 
 
 class TestProfileCardCabinetWarning(unittest.TestCase):

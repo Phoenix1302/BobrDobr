@@ -19,7 +19,7 @@ QPushButton {
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 22px;
+    padding: 7px 14px;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-bottom: 2px solid #047857;
@@ -42,7 +42,7 @@ QPushButton {
     color: #fca5a5;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 22px;
+    padding: 7px 14px;
     border-radius: 8px;
     border: 1px solid rgba(239, 68, 68, 0.45);
 }
@@ -66,7 +66,7 @@ QPushButton {
     font-size: 13px;
     border-radius: 8px;
     border: 1px solid rgba(217, 119, 6, 0.45);
-    padding: 7px 22px;
+    padding: 7px 12px;
 }
 """
 
@@ -151,7 +151,7 @@ QPushButton {
     color: #7dd3fc;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 18px;
+    padding: 7px 12px;
     border-radius: 8px;
     border: 1px solid rgba(56, 189, 248, 0.50);
     border-bottom: 2px solid rgba(2, 132, 199, 0.70);
@@ -173,7 +173,7 @@ QPushButton {
     color: #fca5a5;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 18px;
+    padding: 7px 12px;
     border-radius: 8px;
     border: 1px solid rgba(239, 68, 68, 0.50);
     border-bottom: 2px solid rgba(185, 28, 28, 0.70);
@@ -195,7 +195,7 @@ QPushButton {
     color: #fde047;
     font-size: 13px;
     font-weight: 700;
-    padding: 7px 18px;
+    padding: 7px 12px;
     border-radius: 8px;
     border: 1px solid rgba(245, 158, 11, 0.50);
     border-bottom: 2px solid rgba(180, 83, 9, 0.70);
@@ -516,26 +516,34 @@ class VPNProfileCard(QFrame):
 
         self.lbl_name = QLabel(name_text)
         self.lbl_name.setToolTip(name_text)
-        self.lbl_name.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.lbl_name.setMinimumWidth(0)
+        self.lbl_name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.lbl_name.setStyleSheet("font-size: 16px; font-weight: 800; color: #f8fafc; margin-left: 2px;")
-        top_row.addWidget(self.lbl_name)
+        top_row.addWidget(self.lbl_name, stretch=1)
 
-        top_row.addStretch()
+        # Правый контейнер верхнего ряда (Статус + Главная кнопка действия)
+        top_right_box = QHBoxLayout()
+        top_right_box.setSpacing(10)
+        top_right_box.setContentsMargins(0, 0, 0, 0)
+        top_right_box.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         # Бейдж статуса
         self.lbl_status = QLabel("○ Отключено")
+        self.lbl_status.setAlignment(Qt.AlignCenter)
+        self.lbl_status.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.lbl_status.setStyleSheet("font-size: 11px; font-weight: 700; color: #94a3b8; padding: 4px 10px;")
-        top_row.addWidget(self.lbl_status)
+        top_right_box.addWidget(self.lbl_status)
 
         # Главная кнопка действия (Подключить / Отключить)
         self.btn_toggle = QPushButton("Подключить")
         self.btn_toggle.setObjectName("btn_connect")
         self.btn_toggle.setCursor(Qt.PointingHandCursor)
-        self.btn_toggle.setMinimumWidth(150)
-        self.btn_toggle.setFixedHeight(34)
+        self.btn_toggle.setFixedSize(148, 34)
+        self.btn_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_toggle.clicked.connect(self._on_toggle_clicked)
-        top_row.addWidget(self.btn_toggle)
+        top_right_box.addWidget(self.btn_toggle)
 
+        top_row.addLayout(top_right_box)
         card_layout.addLayout(top_row)
 
         # 2. Средний ряд: Детали соединения (Шлюз, Конфиг, Маскировка)
@@ -545,7 +553,7 @@ class VPNProfileCard(QFrame):
         if self.proto == "amnezia":
             ep = self.profile.get("endpoint", "")
             addr = self.profile.get("address", "")
-            iface = self.profile.get("interface", "awg0")
+            iface = self.profile.get("interface", "bobr0")
             cfg_path = self.profile.get("config_path", "")
             has_content = bool(self.profile.get("config_content"))
 
@@ -582,26 +590,34 @@ class VPNProfileCard(QFrame):
             details_label = QLabel(f"🌐 <span style='color: #cbd5e1; font-weight: 600;'>{server}:{port}</span>{cam_info}{user_info}")
 
         details_label.setTextFormat(Qt.RichText)
-        details_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        details_label.setMinimumWidth(0)
+        details_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         details_label.setStyleSheet("font-size: 12px; color: #94a3b8;")
-        details_row.addWidget(details_label)
-        details_row.addStretch()
+        details_row.addWidget(details_label, stretch=1)
 
-        # Кнопки управления (⚙ Настройки, 🗑 Удалить)
+        # Правый контейнер среднего ряда (⚙ Настройки, 🗑 Удалить)
+        details_right_box = QHBoxLayout()
+        details_right_box.setSpacing(8)
+        details_right_box.setContentsMargins(0, 0, 0, 0)
+        details_right_box.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
         self.btn_edit = QPushButton("⚙ Настройки")
         self.btn_edit.setObjectName("btn_card_edit")
         self.btn_edit.setCursor(Qt.PointingHandCursor)
-        self.btn_edit.setFixedHeight(28)
+        self.btn_edit.setFixedSize(110, 28)
+        self.btn_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_edit.clicked.connect(lambda: self.edit_requested.emit(self.profile_id))
-        details_row.addWidget(self.btn_edit)
+        details_right_box.addWidget(self.btn_edit)
 
         self.btn_delete = QPushButton("🗑 Удалить")
         self.btn_delete.setObjectName("btn_card_delete")
         self.btn_delete.setCursor(Qt.PointingHandCursor)
-        self.btn_delete.setFixedHeight(28)
+        self.btn_delete.setFixedSize(100, 28)
+        self.btn_delete.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_delete.clicked.connect(lambda: self.delete_requested.emit(self.profile_id))
-        details_row.addWidget(self.btn_delete)
+        details_right_box.addWidget(self.btn_delete)
 
+        details_row.addLayout(details_right_box)
         card_layout.addLayout(details_row)
 
     def _on_toggle_clicked(self):
