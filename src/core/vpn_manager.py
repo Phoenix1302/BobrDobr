@@ -20,6 +20,47 @@ class VPNState(str, Enum):
     ERROR = "Error"
 
 
+def send_graceful_windows_signal(pid: int, proc: Optional[subprocess.Popen] = None) -> bool:
+    """
+    Sends a graceful CTRL_C_EVENT or CTRL_BREAK_EVENT to a console process on Windows.
+    Attaches to the child process's console and issues GenerateConsoleCtrlEvent.
+    This triggers OpenConnect's console_ctrl_handler to send the AnyConnect BYE packet,
+    and AmneziaWG's Wintun cleanup.
+
+    NOTE: SetConsoleCtrlHandler(None, True) is permanently maintained to protect
+    the Python Qt GUI host process from asynchronous STATUS_CONTROL_C_EXIT crashes.
+    """
+    if not is_windows():
+        return False
+    if pid <= 0:
+        return False
+    if proc is not None and proc.poll() is not None:
+        return False
+
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        # Ensure calling Python GUI process permanently ignores console control events
+        k32.SetConsoleCtrlHandler(None, True)
+        k32.FreeConsole()
+        if k32.AttachConsole(pid):
+            try:
+                k32.SetConsoleCtrlHandler(None, True)
+                # Dispatch BOTH CTRL_C_EVENT (0) and CTRL_BREAK_EVENT (1)
+                # OpenConnect catches CTRL_C_EVENT / CTRL_BREAK_EVENT to send the AnyConnect BYE packet.
+                # AmneziaWG (Go runtime on Windows) specifically catches CTRL_BREAK_EVENT for graceful Wintun & route teardown.
+                res_c = k32.GenerateConsoleCtrlEvent(0, 0)
+                res_break = k32.GenerateConsoleCtrlEvent(1, 0)
+                return bool(res_c or res_break)
+            finally:
+                k32.FreeConsole()
+                # NEVER reset to False! Keep protection permanently active in GUI host process.
+                k32.SetConsoleCtrlHandler(None, True)
+    except Exception as e:
+        print(f"[send_graceful_windows_signal] Failed to signal PID {pid}: {e}", file=sys.stderr)
+    return False
+
+
 class VPNLauncherBase(QObject):
     """
     Abstract base class for VPN process orchestration.
@@ -37,6 +78,7 @@ class VPNLauncherBase(QObject):
         self._process: Optional[subprocess.Popen] = None
         self._stop_requested = threading.Event()
         self._reader_threads: List[threading.Thread] = []
+        self._session_run_id: int = 0
 
     @property
     def state(self) -> VPNState:
@@ -57,11 +99,14 @@ class VPNLauncherBase(QObject):
     @abstractmethod
     def start_connection(self, **kwargs: Any) -> bool:
         """Start the VPN connection with protocol-specific parameters."""
-        pass
+        if self.is_running() or self.state == VPNState.DISCONNECTING:
+            self.log("Previous process is still terminating or active. Waiting for clean shutdown...", "sys")
+            self.stop_connection(wait=True)
+        return False
 
     def stop_connection(self, wait: bool = False) -> None:
         """Gracefully disconnects and cleans up network tunnels."""
-        if not self.is_running():
+        if not self.is_running() and self.state != VPNState.DISCONNECTING:
             self.set_state(VPNState.DISCONNECTED)
             return
 
@@ -69,47 +114,62 @@ class VPNLauncherBase(QObject):
         self._stop_requested.set()
         self.log("Initiating graceful shutdown...", "sys")
 
-        proc = self._process
-        if proc is None:
+        proc_to_kill = self._process
+        if proc_to_kill is None:
             self.set_state(VPNState.DISCONNECTED)
             return
 
         def shutdown_worker():
             try:
-                pid = proc.pid
+                if proc_to_kill.poll() is not None:
+                    self.log(f"Process already exited with code {proc_to_kill.returncode}.", "sys")
+                    return
+
+                pid = proc_to_kill.pid
                 if is_windows():
-                    # 1. Graceful break signal (triggers Go and Wintun adapter teardown)
+                    # 1. Graceful console control event (triggers OpenConnect AnyConnect BYE packet and Wintun cleanup)
+                    signaled = False
+                    if proc_to_kill.poll() is None:
+                        signaled = send_graceful_windows_signal(pid, proc=proc_to_kill)
+                    if signaled:
+                        self.log(f"Sent graceful console control signal to PID {pid}.", "sys")
+                    else:
+                        if proc_to_kill.poll() is None:
+                            try:
+                                proc_to_kill.send_signal(signal.CTRL_BREAK_EVENT)
+                                self.log(f"Sent CTRL_BREAK_EVENT fallback to PID {pid}.", "sys")
+                            except Exception:
+                                pass
+
+                    # 2. Give process up to 3.5 seconds to send BYE packet and run vpnc-script disconnect / Wintun teardown
                     try:
-                        proc.send_signal(signal.CTRL_BREAK_EVENT)
-                    except Exception:
-                        try:
-                            proc.terminate()
-                        except Exception:
-                            pass
-                    try:
-                        proc.wait(timeout=2.0)
+                        proc_to_kill.wait(timeout=3.5)
                         self.log("Process terminated cleanly.", "sys")
                     except subprocess.TimeoutExpired:
+                        self.log("Process did not exit within timeout, forcing termination...", "sys")
                         try:
-                            proc.terminate()
-                            proc.wait(timeout=1.0)
+                            proc_to_kill.terminate()
+                            proc_to_kill.wait(timeout=1.0)
                         except Exception:
                             pass
                         run_silent_cmd(["taskkill", "/F", "/T", "/PID", str(pid)], timeout=2)
                         try:
-                            proc.wait(timeout=1.0)
+                            proc_to_kill.wait(timeout=1.0)
                         except Exception:
                             pass
+                    except OSError:
+                        # Process already terminated and handle invalidated
+                        pass
                 else:
                     # On Linux, send SIGINT / SIGTERM to the process group
                     try:
                         pgid = os.getpgid(pid)
                         os.killpg(pgid, signal.SIGINT)
                     except Exception:
-                        proc.terminate()
+                        proc_to_kill.terminate()
 
                     try:
-                        proc.wait(timeout=3.0)
+                        proc_to_kill.wait(timeout=3.0)
                         self.log("Process terminated cleanly.", "sys")
                     except subprocess.TimeoutExpired:
                         self.log("Process did not exit within timeout, forcing termination...", "sys")
@@ -117,20 +177,19 @@ class VPNLauncherBase(QObject):
                             pgid = os.getpgid(pid)
                             os.killpg(pgid, signal.SIGKILL)
                         except Exception:
-                            proc.kill()
-                        proc.wait(timeout=2.0)
-                    else:
+                            proc_to_kill.kill()
                         try:
-                            pgid = os.getpgid(pid)
-                            os.killpg(pgid, signal.SIGKILL)
+                            proc_to_kill.wait(timeout=2.0)
                         except Exception:
-                            proc.kill()
-                    proc.wait(timeout=2.0)
+                            pass
             except Exception as e:
-                self.log(f"Error during shutdown: {e}", "sys")
+                # Ignore harmless handle errors when process already terminated
+                if not (isinstance(e, OSError) and getattr(e, 'winerror', None) == 6):
+                    self.log(f"Error during shutdown: {e}", "sys")
             finally:
-                self._process = None
-                self.set_state(VPNState.DISCONNECTED)
+                if self._process is proc_to_kill:
+                    self._process = None
+                    self.set_state(VPNState.DISCONNECTED)
 
         if wait:
             shutdown_worker()
@@ -145,11 +204,16 @@ class VPNLauncherBase(QObject):
         stdin_data: Optional[str] = None
     ) -> bool:
         """Spawns binary in an isolated subprocess with realtime stdout/stderr streaming."""
+        if self.is_running() or self.state == VPNState.DISCONNECTING:
+            self.log("Previous process is still terminating or active. Waiting for clean shutdown...", "sys")
+            self.stop_connection(wait=True)
+
         if self.is_running():
             self.log("Process is already running.", "sys")
             return False
 
         self._stop_requested.clear()
+        self._session_run_id += 1
         self.set_state(VPNState.CONNECTING)
 
         process_env = os.environ.copy()
@@ -161,11 +225,10 @@ class VPNLauncherBase(QObject):
 
         startupinfo = None
         if is_windows():
-            # CREATE_NEW_PROCESS_GROUP is required for graceful CTRL_BREAK_EVENT
-            # CREATE_NO_WINDOW prevents black console windows from opening
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-            if hasattr(subprocess, "CREATE_NO_WINDOW"):
-                creationflags |= subprocess.CREATE_NO_WINDOW
+            # CREATE_NEW_CONSOLE creates an isolated console attached to the child,
+            # allowing AttachConsole + GenerateConsoleCtrlEvent to send graceful shutdown signals.
+            # STARTF_USESHOWWINDOW with SW_HIDE guarantees the console window is completely hidden.
+            creationflags = subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_NEW_PROCESS_GROUP
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
@@ -257,17 +320,21 @@ class VPNLauncherBase(QObject):
         """Monitors process exit code."""
         ret = proc.wait()
         if self._stop_requested.is_set():
-            self.set_state(VPNState.DISCONNECTED)
-            self._process = None
+            if self._process is proc:
+                self.set_state(VPNState.DISCONNECTED)
+                self._process = None
             return
 
         if ret == 0:
             self.log(f"Process exited normally with code {ret}", "sys")
-            self.set_state(VPNState.DISCONNECTED)
+            if self._process is proc:
+                self.set_state(VPNState.DISCONNECTED)
         else:
             self.log(f"Process terminated unexpectedly with exit code {ret}", "error")
-            self.set_state(VPNState.ERROR)
-        self._process = None
+            if self._process is proc:
+                self.set_state(VPNState.ERROR)
+        if self._process is proc:
+            self._process = None
 
     @abstractmethod
     def _parse_log_line(self, line: str, channel: str) -> None:

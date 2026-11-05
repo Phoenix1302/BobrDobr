@@ -32,6 +32,7 @@ from utils.version import APP_VERSION, APP_TITLE, GITHUB_REPO, GITHUB_RELEASES_U
 from utils.config_store import settings
 from utils.github_updater import GitHubUpdateCheckerThread
 from utils.subscription_manager import SubscriptionManager
+from utils.single_instance import check_single_instance, release_single_instance
 
 
 class SubscriptionSyncThread(QThread):
@@ -124,6 +125,22 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._wire_signals()
         self._render_profiles()
+
+        # IPC сервер и Windows сообщение для активации окна при повторном запуске
+        if is_windows():
+            try:
+                import ctypes
+                self._wm_activate_msg = ctypes.windll.user32.RegisterWindowMessageW("BobrDobr_VPN_Activate_Window_Msg")
+            except Exception:
+                self._wm_activate_msg = 0
+        else:
+            self._wm_activate_msg = 0
+
+        from PySide6.QtNetwork import QLocalServer
+        self._ipc_server = QLocalServer(self)
+        self._ipc_server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
+        self._ipc_server.newConnection.connect(self._on_single_instance_ipc_connection)
+        self._ipc_server.listen("BobrDobr_VPN_SingleInstance_IPC")
 
     def _resolve_icon_path(self) -> str:
         candidates = [
@@ -234,9 +251,56 @@ class MainWindow(QMainWindow):
         if self.isVisible() and not self.isMinimized():
             self.hide()
         else:
-            self.showNormal()
-            self.activateWindow()
-            self.raise_()
+            self.restore_and_bring_to_front()
+
+    def restore_and_bring_to_front(self):
+        """Восстанавливает главное окно из трея/свернутого состояния и выводит на передний план."""
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        if is_windows():
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                kernel32 = ctypes.windll.kernel32
+                hwnd = int(self.winId())
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.BringWindowToTop(hwnd)
+
+                fore_hwnd = user32.GetForegroundWindow()
+                fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
+                cur_thread = kernel32.GetCurrentThreadId()
+                if fore_thread != cur_thread:
+                    user32.AttachThreadInput(cur_thread, fore_thread, True)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.AttachThreadInput(cur_thread, fore_thread, False)
+                else:
+                    user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
+    def _on_single_instance_ipc_connection(self):
+        try:
+            client = self._ipc_server.nextPendingConnection()
+            if client:
+                client.readyRead.connect(lambda: client.readAll())
+                client.disconnected.connect(client.deleteLater)
+        except Exception:
+            pass
+        self.restore_and_bring_to_front()
+
+    def nativeEvent(self, event_type, message):
+        if is_windows():
+            try:
+                import ctypes
+                from ctypes import wintypes
+                msg = wintypes.MSG.from_address(int(message))
+                if getattr(self, "_wm_activate_msg", 0) and msg.message == self._wm_activate_msg:
+                    self.restore_and_bring_to_front()
+                    return True, 0
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
@@ -266,10 +330,17 @@ class MainWindow(QMainWindow):
             sys.exit(0)
 
     def _clean_shutdown(self, wait: bool = True):
-        if hasattr(self, "amnezia_launcher") and self.amnezia_launcher.is_running():
+        if hasattr(self, "_ipc_server"):
+            try:
+                self._ipc_server.close()
+                self._ipc_server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
+            except Exception:
+                pass
+        if hasattr(self, "amnezia_launcher") and (self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING):
             self.amnezia_launcher.stop_connection(wait=wait)
-        if hasattr(self, "openconnect_launcher") and self.openconnect_launcher.is_running():
+        if hasattr(self, "openconnect_launcher") and (self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING):
             self.openconnect_launcher.stop_connection(wait=wait)
+        release_single_instance()
 
     def _update_tray_state(self, state: VPNState, vpn_name: str):
         if not hasattr(self, "tray_icon"):
@@ -1108,15 +1179,23 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
         # 2. Гарантированно глушим любые активные демоны перед стартом
-        if self.amnezia_launcher.is_running():
+        if self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING:
             self.amnezia_launcher.stop_connection(wait=True)
-        if self.openconnect_launcher.is_running():
+        if self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING:
             self.openconnect_launcher.stop_connection(wait=True)
+
+        QApplication.processEvents()
 
         # 3. Стартуем новый профиль
         self._start_profile_tunnel(new_id)
 
     def _start_profile_tunnel(self, profile_id: str):
+        # Гарантированная защита: глушим любые остаточные процессы туннелей перед запуском
+        if self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING:
+            self.amnezia_launcher.stop_connection(wait=True)
+        if self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING:
+            self.openconnect_launcher.stop_connection(wait=True)
+
         profile = settings.get_profile(profile_id)
         if not profile:
             return
@@ -1194,7 +1273,7 @@ class MainWindow(QMainWindow):
                     settings.save_profile(profile)
                     settings.set_password(pwd, "openconnect_password")
 
-            self.openconnect_launcher.start_connection(
+            ok = self.openconnect_launcher.start_connection(
                 server=server,
                 port=port,
                 protocol=profile.get("protocol", "anyconnect"),
@@ -1205,6 +1284,10 @@ class MainWindow(QMainWindow):
                 group=profile.get("group", ""),
                 connect_url=profile.get("camouflage_connect_url", "") or profile.get("camouflage_path", "")
             )
+            if not ok:
+                if profile_id in self.cards:
+                    self.cards[profile_id].update_state(VPNState.ERROR)
+                self.active_profile_id = None
 
     def _on_disconnect_profile(self, profile_id: str, wait: bool = False):
         profile = settings.get_profile(profile_id)
@@ -1238,6 +1321,8 @@ class MainWindow(QMainWindow):
 
         if wait:
             launcher.stop_connection(wait=True)
+            if self.active_profile_id == profile_id:
+                self.active_profile_id = None
         else:
             QTimer.singleShot(40, lambda: launcher.stop_connection(wait=False))
 
@@ -1268,7 +1353,8 @@ class MainWindow(QMainWindow):
                     if prof:
                         p_proto = prof.get("proto", "amnezia")
                         p_launcher = "AmneziaWG" if p_proto == "amnezia" else "OpenConnect"
-                        if p_launcher == vpn_name and card.state in (VPNState.DISCONNECTING, VPNState.CONNECTING):
+                        card_state = getattr(card, "current_state", getattr(card, "state", None))
+                        if p_launcher == vpn_name and card_state in (VPNState.DISCONNECTING, VPNState.CONNECTING):
                             card.update_state(VPNState.DISCONNECTED)
             return
 
@@ -1451,43 +1537,6 @@ class GlobalButtonHoverFilter(QObject):
         return super().eventFilter(obj, event)
 
 
-_SINGLE_INSTANCE_MUTEX = None
-
-
-def check_single_instance() -> bool:
-    """Returns True if this is the only running instance.
-    If another instance is already running on Windows, restores its window and returns False."""
-    global _SINGLE_INSTANCE_MUTEX
-    if not is_windows():
-        return True
-    try:
-        import ctypes
-        from ctypes import wintypes
-        kernel32 = ctypes.windll.kernel32
-        user32 = ctypes.windll.user32
-        mode_str = "Installed" if is_installed_mode() else "Portable"
-        mutex_name = f"Global\\BobrDobr_VPN_SingleInstance_{mode_str}_v1"
-        _SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(None, False, mutex_name)
-        if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-            def enum_cb(h, _):
-                length = user32.GetWindowTextLengthW(h)
-                if length > 0:
-                    buff = ctypes.create_unicode_buffer(length + 1)
-                    user32.GetWindowTextW(h, buff, length + 1)
-                    title = buff.value
-                    if "БобрДобр" in title and "Visual Studio" not in title:
-                        user32.ShowWindow(h, 9)  # SW_RESTORE
-                        user32.SetForegroundWindow(h)
-                        return False
-                return True
-            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-            user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
-            return False
-        return True
-    except Exception:
-        return True
-
-
 def main():
     if any(arg in sys.argv for arg in ("--help", "-h", "--version", "-v")):
         if is_windows():
@@ -1503,19 +1552,25 @@ def main():
             print(f"BobrDobr VPN v{APP_VERSION}\nUsage: BobrDobr-VPN.exe [--version] [--help]")
             sys.exit(0)
 
+    app = QApplication(sys.argv)
+    app.setApplicationName("BobrDobrVPN")
+    app.setOrganizationName("BobrDobr")
+    app.setQuitOnLastWindowClosed(False)
+
     if is_windows():
-        if not check_single_instance():
+        try:
+            import ctypes
+            # Permanently protect the host Python GUI process against console signals (CTRL_C_EVENT, CTRL_BREAK_EVENT)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(None, True)
+        except Exception:
+            pass
+        if not check_single_instance(show_dialog=False):
             sys.exit(0)
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("BobrDobr.VPN.Client.1")
         except Exception:
             pass
-
-    app = QApplication(sys.argv)
-    app.setApplicationName("BobrDobrVPN")
-    app.setOrganizationName("BobrDobr")
-    app.setQuitOnLastWindowClosed(False)
 
     # Устанавливаем глобальную иконку приложения для всех окон и диалогов
     ico_candidates = [

@@ -3,7 +3,7 @@ import sys
 import shutil
 import platform
 import subprocess
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict, Any
 
 
 def is_windows() -> bool:
@@ -289,29 +289,203 @@ def is_network_adapter_present(adapter_name: str) -> bool:
         return False
 
 
-def kill_amnezia_daemons() -> None:
-    """Kills any orphaned AmneziaWG daemon processes only if running."""
+def get_bobrdobr_daemon_pids(names: Optional[List[str]] = None) -> List[int]:
+    """
+    Returns PIDs of running daemon processes that belong exclusively to this BobrDobr application.
+    Checks process parent PID and binary image path against BobrDobr's persistent directories
+    to prevent terminating unrelated VPN software or system daemons.
+    """
+    if not is_windows():
+        return []
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.windll.kernel32
+
+    if names is None:
+        target_names = {"amneziawg-go.exe", "amneziawg.exe", "wireguard.exe", "openconnect.exe"}
+    else:
+        target_names = {n.lower().rstrip(".exe") + ".exe" for n in names}
+
+    TH32CS_SNAPPROCESS = 0x00000002
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ('dwSize', wintypes.DWORD),
+            ('cntUsage', wintypes.DWORD),
+            ('th32ProcessID', wintypes.DWORD),
+            ('th32DefaultHeapID', ctypes.POINTER(wintypes.ULONG)),
+            ('th32ModuleID', wintypes.DWORD),
+            ('cntThreads', wintypes.DWORD),
+            ('th32ParentProcessID', wintypes.DWORD),
+            ('pcPriClassBase', wintypes.LONG),
+            ('dwFlags', wintypes.DWORD),
+            ('szExeFile', wintypes.WCHAR * 260)
+        ]
+
+    h_snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if h_snap == -1 or h_snap == 0:
+        return []
+
+    curr_pid = os.getpid()
+    trusted_dirs = []
+    try:
+        trusted_dirs.append(os.path.normcase(os.path.abspath(get_persistent_bin_dir())))
+    except Exception:
+        pass
+    try:
+        from utils.installer_helper import get_install_dir
+        trusted_dirs.append(os.path.normcase(os.path.abspath(get_install_dir())))
+    except Exception:
+        pass
+    try:
+        trusted_dirs.append(os.path.normcase(os.path.abspath(get_base_dir())))
+    except Exception:
+        pass
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        try:
+            trusted_dirs.append(os.path.normcase(os.path.abspath(meipass)))
+        except Exception:
+            pass
+
+    pe = PROCESSENTRY32W()
+    pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+    matched_pids = []
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+    if kernel32.Process32FirstW(h_snap, ctypes.byref(pe)):
+        while True:
+            proc_name = pe.szExeFile.lower()
+            if proc_name in target_names:
+                pid = pe.th32ProcessID
+                parent_pid = pe.th32ParentProcessID
+
+                # If current process is the parent, it definitely belongs to us
+                if parent_pid == curr_pid:
+                    matched_pids.append(pid)
+                else:
+                    # Otherwise inspect process executable image path
+                    h_proc = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                    if h_proc:
+                        try:
+                            buf = ctypes.create_unicode_buffer(1024)
+                            sz = wintypes.DWORD(1024)
+                            if kernel32.QueryFullProcessImageNameW(h_proc, 0, buf, ctypes.byref(sz)):
+                                img_path = os.path.normcase(os.path.abspath(buf.value))
+                                is_ours = False
+                                for t_dir in trusted_dirs:
+                                    if img_path.startswith(t_dir):
+                                        is_ours = True
+                                        break
+                                if not is_ours and "bobrdobr" in img_path:
+                                    is_ours = True
+                                if is_ours:
+                                    matched_pids.append(pid)
+                        finally:
+                            kernel32.CloseHandle(h_proc)
+
+            if not kernel32.Process32NextW(h_snap, ctypes.byref(pe)):
+                break
+
+    kernel32.CloseHandle(h_snap)
+    return matched_pids
+
+
+def kill_bobrdobr_daemons(pids: List[int]) -> None:
+    """Terminates specific daemon processes belonging exclusively to BobrDobr."""
+    if not is_windows() or not pids:
+        return
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    PROCESS_TERMINATE = 0x0001
+    for pid in pids:
+        try:
+            h = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+            if h:
+                kernel32.TerminateProcess(h, 1)
+                kernel32.CloseHandle(h)
+            else:
+                run_silent_cmd(["taskkill", "/F", "/PID", str(pid)], timeout=2)
+        except Exception:
+            pass
+
+
+def kill_amnezia_daemons(only_this_app: bool = True) -> None:
+    """Kills orphaned AmneziaWG daemon processes. If only_this_app is True, targets only BobrDobr's own processes."""
     if not is_windows():
         return
-    if not is_process_running("amneziawg-go") and not is_process_running("amneziawg"):
-        return
-    for proc_name in ["amneziawg-go.exe", "amneziawg.exe"]:
-        run_silent_cmd(["taskkill", "/F", "/T", "/IM", proc_name], timeout=2)
+    if only_this_app:
+        pids = get_bobrdobr_daemon_pids(["amneziawg-go.exe", "amneziawg.exe", "wireguard.exe"])
+        kill_bobrdobr_daemons(pids)
+    else:
+        if not is_process_running("amneziawg-go") and not is_process_running("amneziawg"):
+            return
+        for proc_name in ["amneziawg-go.exe", "amneziawg.exe"]:
+            run_silent_cmd(["taskkill", "/F", "/T", "/IM", proc_name], timeout=2)
 
 
-def kill_openconnect_daemons() -> None:
-    """Kills any orphaned OpenConnect daemon processes only if running."""
+def kill_openconnect_daemons(only_this_app: bool = True) -> None:
+    """Kills orphaned OpenConnect daemon processes. If only_this_app is True, targets only BobrDobr's own processes."""
     if not is_windows():
         return
-    if not is_process_running("openconnect"):
-        return
-    run_silent_cmd(["taskkill", "/F", "/T", "/IM", "openconnect.exe"], timeout=2)
+    if only_this_app:
+        pids = get_bobrdobr_daemon_pids(["openconnect.exe"])
+        kill_bobrdobr_daemons(pids)
+    else:
+        if not is_process_running("openconnect"):
+            return
+        run_silent_cmd(["taskkill", "/F", "/T", "/IM", "openconnect.exe"], timeout=2)
 
 
-def cleanup_orphaned_vpn_daemons() -> None:
+def cleanup_orphaned_vpn_daemons(only_this_app: bool = True) -> None:
     """Kills all orphaned VPN daemon processes across all supported protocols."""
-    kill_amnezia_daemons()
-    kill_openconnect_daemons()
+    kill_amnezia_daemons(only_this_app=only_this_app)
+    kill_openconnect_daemons(only_this_app=only_this_app)
+
+
+def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
+    """
+    Pre-connection safety gate for Wintun / WireGuard network adapters:
+    1. Terminates any lingering/orphaned daemon processes belonging to this application.
+    2. Checks if the requested adapter is present in the network stack.
+    3. If present and lingering without active processes, cleans up the phantom adapter device.
+    4. If the adapter is occupied by another process/software, finds an available fallback (awg1, awg2, etc.).
+    Returns (success, ready_interface_name).
+    """
+    if not is_windows():
+        return True, interface_name
+
+    target_iface = (interface_name or "").strip() or "awg0"
+
+    # 1. Clean up any orphaned BobrDobr daemon processes
+    pids = get_bobrdobr_daemon_pids(["amneziawg-go.exe", "amneziawg.exe", "wireguard.exe"])
+    if pids:
+        kill_bobrdobr_daemons(pids)
+        import time
+        time.sleep(0.1)
+
+    # 2. Check if the target adapter already exists
+    if not is_network_adapter_present(target_iface):
+        return True, target_iface
+
+    # 3. Adapter exists: attempt fast removal of stale/phantom device
+    delete_wintun_adapter(target_iface)
+    import time
+    for _ in range(6):
+        time.sleep(0.05)
+        if not is_network_adapter_present(target_iface):
+            return True, target_iface
+
+    # 4. If target_iface is STILL present, it might be actively occupied by another process/client.
+    # Automatically scan for a free alternative interface name (awg1 .. awg9)
+    prefix = "".join(c for c in target_iface if not c.isdigit()) or "awg"
+    for idx in range(1, 10):
+        candidate = f"{prefix}{idx}"
+        if not is_network_adapter_present(candidate):
+            return True, candidate
+
+    return False, target_iface
 
 
 def get_wintun_device_instances() -> List[str]:

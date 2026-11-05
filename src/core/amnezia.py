@@ -10,7 +10,8 @@ from utils.conf_parser import parse_amnezia_config_text, OBFUSCATION_KEYS
 from utils.platform_helper import (
     find_binary, get_wintun_path, is_windows, is_linux, run_silent_cmd,
     kill_amnezia_daemons, delete_wintun_adapter,
-    is_process_running, is_network_adapter_present, get_wintun_device_instances
+    is_process_running, is_network_adapter_present, get_wintun_device_instances,
+    prepare_tunnel_adapter
 )
 
 
@@ -28,6 +29,7 @@ class AmneziaWGLauncher(VPNLauncherBase):
         self.config_path: Optional[str] = None
         self.interface_name: str = "awg0"
         self._temp_config: Optional[str] = None
+        self._session_run_id: int = 0
 
     @classmethod
     def parse_config_text(cls, content: str) -> Dict[str, Any]:
@@ -60,6 +62,10 @@ class AmneziaWGLauncher(VPNLauncherBase):
         Prepares the tunnel configuration (directly from settings config_content or file),
         resolves binary & wintun.dll, and spawns the tunnel process.
         """
+        if self.is_running() or self.state == VPNState.DISCONNECTING:
+            self.log("Previous AmneziaWG connection is still active or disconnecting. Waiting for clean shutdown...", "sys")
+            self.stop_connection(wait=True)
+
         active_config_path: Optional[str] = None
 
         # 1. Prefer in-memory config_content from settings
@@ -126,28 +132,25 @@ class AmneziaWGLauncher(VPNLauncherBase):
             else:
                 self.log("WARNING: wintun.dll not found in bin/windows/. Tunnel creation may fail.", "sys")
 
+        self._session_run_id += 1
+
         try:
-            # Windows: check if an orphaned daemon or colliding adapter ACTUALLY exists.
-            # 99.9% of the time neither exists, so we proceed immediately with ZERO delay!
+            # Windows: check if adapter is busy, clear orphaned BobrDobr daemons, and fallback if necessary
             if is_windows():
                 try:
-                    stale_daemon = is_process_running("amneziawg-go") or is_process_running("amneziawg")
-                    wintun_devs = get_wintun_device_instances()
-                    stale_adapter = bool(wintun_devs) or is_network_adapter_present(self.interface_name)
-
-                    if stale_daemon or stale_adapter:
-                        self.log(
-                            f"Обнаружен конфликт перед запуском (процесс: {stale_daemon}, фантомный адаптер: {stale_adapter}). "
-                            "Выполняется быстрая зачистка...",
-                            "sys"
-                        )
-                        if stale_daemon:
-                            kill_amnezia_daemons()
-                        if stale_adapter:
-                            delete_wintun_adapter(self.interface_name)
-                        time.sleep(0.15)
-                except Exception:
-                    pass
+                    ok, ready_iface = prepare_tunnel_adapter(self.interface_name)
+                    if ok:
+                        if ready_iface != self.interface_name:
+                            self.log(
+                                f"Адаптер '{self.interface_name}' занят другим процессом. "
+                                f"Автоматически переключено на свободный интерфейс '{ready_iface}'.",
+                                "sys"
+                            )
+                            self.interface_name = ready_iface
+                    else:
+                        self.log(f"Предупреждение: Адаптер '{self.interface_name}' занят.", "sys")
+                except Exception as e:
+                    self.log(f"Предупреждение при подготовке адаптера: {e}", "sys")
 
             # Build command line
             cmd = self._build_cmd(binary, active_config_path, self.interface_name)
@@ -201,15 +204,35 @@ class AmneziaWGLauncher(VPNLauncherBase):
                 except Exception:
                     pass
 
+        target_proc = self._process
+        target_iface = self.interface_name
         super().stop_connection(wait=wait)
 
+        stop_token = self._session_run_id
         if is_windows():
             def cleanup_worker():
                 if not wait:
-                    time.sleep(0.3)
-                kill_amnezia_daemons()
-                if self.interface_name:
-                    delete_wintun_adapter(self.interface_name)
+                    # Allow amneziawg-go and Wintun driver sufficient time for graceful adapter and route teardown
+                    time.sleep(4.0)
+                # If a new connection started in the meantime, abort cleanup
+                if self._session_run_id != stop_token:
+                    return
+                if self.state in (VPNState.CONNECTING, VPNState.CONNECTED):
+                    return
+                if self._process is not None and self._process is not target_proc:
+                    return
+                if self.is_running():
+                    return
+                if target_proc is not None and target_proc.poll() is None:
+                    try:
+                        target_proc.kill()
+                    except Exception:
+                        pass
+                    run_silent_cmd(["taskkill", "/F", "/T", "/PID", str(target_proc.pid)], timeout=2)
+                elif self.state == VPNState.DISCONNECTED and not self.is_running():
+                    kill_amnezia_daemons(only_this_app=True)
+                    if target_iface:
+                        delete_wintun_adapter(target_iface)
 
             if wait:
                 cleanup_worker()

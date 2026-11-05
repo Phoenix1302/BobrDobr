@@ -246,6 +246,10 @@ class VPNProfileCard(QFrame):
         self._init_ui()
         self.update_state(VPNState.DISCONNECTED)
 
+    @property
+    def state(self) -> VPNState:
+        return self.current_state
+
     def enterEvent(self, event):
         super().enterEvent(event)
         self._apply_shadow(hover=True)
@@ -601,8 +605,12 @@ class VPNProfileCard(QFrame):
         card_layout.addLayout(details_row)
 
     def _on_toggle_clicked(self):
+        if self.current_state in (VPNState.CONNECTING, VPNState.DISCONNECTING) or not self.btn_toggle.isEnabled():
+            return
+
         if self.current_state == VPNState.CONNECTED:
             # Мгновенная визуальная реакция на клик отключения (0 мс)
+            self.btn_toggle.setEnabled(False)
             self.update_state(
                 VPNState.DISCONNECTING,
                 custom_status="⏳ Отключение...",
@@ -638,6 +646,7 @@ class VPNProfileCard(QFrame):
                 return
 
             # Мгновенная визуальная реакция на клик подключения (0 мс)
+            self.btn_toggle.setEnabled(False)
             self.update_state(
                 VPNState.CONNECTING,
                 custom_status="⏳ Подключение...",
@@ -677,7 +686,8 @@ class VPNProfileCard(QFrame):
             self.setStyleSheet(CARD_STYLE_DISCONNECTED)
 
         # Синхронизируем адаптивную контурную тень с новым состоянием
-        self._apply_shadow(hover=self.underMouse())
+        hover = self.underMouse() if hasattr(self, "underMouse") else False
+        self._apply_shadow(hover=hover)
 
         if state == VPNState.CONNECTED:
             self.lbl_status.setText(custom_status or "● Подключено")

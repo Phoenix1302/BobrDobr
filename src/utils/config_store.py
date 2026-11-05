@@ -212,6 +212,18 @@ class ConfigStore:
             except Exception:
                 data = {}
 
+        # Fallback to backup if primary file was corrupted or empty
+        if not data:
+            bak_path = f"{self.file_path}.bak"
+            if os.path.isfile(bak_path):
+                try:
+                    with open(bak_path, "r", encoding="utf-8") as f:
+                        bak_data = json.load(f)
+                    if isinstance(bak_data, dict) and bak_data.get("profiles"):
+                        data = bak_data
+                except Exception:
+                    pass
+
         if not isinstance(data, dict):
             data = {}
 
@@ -292,6 +304,7 @@ class ConfigStore:
     def save(self) -> None:
         if self._is_cleared:
             return
+        tmp_path = None
         try:
             from utils.version import APP_VERSION
 
@@ -307,11 +320,36 @@ class ConfigStore:
                 if key in disk_data and disk_data[key]:
                     disk_data[key] = encrypt_secret(str(disk_data[key]))
 
-            with open(self.file_path, "w", encoding="utf-8") as f:
+            # Create directory if missing
+            os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
+
+            # Atomic file save using temporary file and atomic replace to prevent file corruption
+            tmp_path = f"{self.file_path}.tmp_{os.getpid()}"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(disk_data, f, indent=2, ensure_ascii=False)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+
+            # Maintain a rolling backup of last known good configuration
+            if os.path.isfile(self.file_path):
+                bak_path = f"{self.file_path}.bak"
+                try:
+                    shutil.copy2(self.file_path, bak_path)
+                except Exception:
+                    pass
+
+            os.replace(tmp_path, self.file_path)
             self._needs_save = False
         except Exception as e:
             print(f"Failed to save settings: {e}")
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
     def clear(self) -> None:
         """Purges in-memory configuration and deletes settings.json from disk."""

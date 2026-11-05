@@ -59,6 +59,10 @@ class OpenConnectLauncher(VPNLauncherBase):
             self.error_occurred.emit("Server address is required!")
             return False
 
+        if self.is_running() or self.state == VPNState.DISCONNECTING:
+            self.log("Previous OpenConnect connection is still active or disconnecting. Waiting for clean shutdown...", "sys")
+            self.stop_connection(wait=True)
+
         binary = find_binary("openconnect")
         if not binary:
             msg = (
@@ -73,7 +77,7 @@ class OpenConnectLauncher(VPNLauncherBase):
 
         if is_windows():
             try:
-                kill_openconnect_daemons()
+                kill_openconnect_daemons(only_this_app=True)
             except Exception:
                 pass
 
@@ -209,20 +213,39 @@ class OpenConnectLauncher(VPNLauncherBase):
         return self._spawn_process(cmd=cmd, stdin_data=password)
 
     def stop_connection(self, wait: bool = False) -> None:
-        """Stops OpenConnect tunnel and cleans up lingering processes."""
+        """Stops OpenConnect tunnel and cleanly disconnects, allowing the AnyConnect BYE packet to be sent."""
+        target_proc = self._process
+        stop_token = self._session_run_id
         super().stop_connection(wait=wait)
-        if is_windows():
+        if is_windows() and not wait:
             def cleanup_worker():
-                if not wait:
-                    import time
-                    time.sleep(0.3)
-                kill_openconnect_daemons()
+                # Allow openconnect sufficient time to transmit the AnyConnect BYE packet
+                # and execute vpnc-script disconnect before checking for lingering processes
+                import time
+                time.sleep(4.0)
 
-            if wait:
-                cleanup_worker()
-            else:
-                import threading
-                threading.Thread(target=cleanup_worker, daemon=True).start()
+                # Never kill daemons if user has already initiated a new connection or is connected
+                if self._session_run_id != stop_token:
+                    return
+                if self.state in (VPNState.CONNECTING, VPNState.CONNECTED):
+                    return
+                if self._process is not None and self._process is not target_proc:
+                    return
+                if self.is_running():
+                    return
+
+                # If the specific target process did not terminate, kill it by PID
+                if target_proc is not None and target_proc.poll() is None:
+                    try:
+                        target_proc.kill()
+                    except Exception:
+                        pass
+                    run_silent_cmd(["taskkill", "/F", "/T", "/PID", str(target_proc.pid)], timeout=2)
+                elif self.state == VPNState.DISCONNECTED and not self.is_running():
+                    kill_openconnect_daemons(only_this_app=True)
+
+            import threading
+            threading.Thread(target=cleanup_worker, daemon=True).start()
 
     def _find_vpnc_script(self) -> Optional[str]:
         """Locates vpnc-script, vpnc-script-win.js or vpnc-script.js."""
@@ -279,9 +302,15 @@ class OpenConnectLauncher(VPNLauncherBase):
             "unknown host",
             "connection refused",
             "session terminated",
-            "user canceled"
+            "user canceled",
+            "user detached",
+            "logout complete",
+            "bye"
         ]):
-            if "session terminated" in lower or "user canceled" in lower:
+            if any(k in lower for k in [
+                "session terminated", "user canceled", "user detached",
+                "logout complete", "bye"
+            ]):
                 self.set_state(VPNState.DISCONNECTED)
             else:
                 self.set_state(VPNState.ERROR)

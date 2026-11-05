@@ -11,6 +11,7 @@ from utils.installer_helper import (
 )
 from utils.version import APP_VERSION, GITHUB_REPO
 from utils.platform_helper import is_admin, is_windows
+from utils.single_instance import release_single_instance
 
 
 class InstallDialog(QDialog):
@@ -107,6 +108,7 @@ class InstallDialog(QDialog):
             if msg_box.clickedButton() == btn_launch:
                 import subprocess
                 try:
+                    release_single_instance()
                     subprocess.Popen([msg])
                     QApplication.instance().quit()
                 except Exception:
@@ -222,6 +224,7 @@ class UpdateDialog(QDialog):
             if msg_box.clickedButton() == btn_launch:
                 import subprocess
                 try:
+                    release_single_instance()
                     subprocess.Popen([msg])
                     QApplication.instance().quit()
                 except Exception:

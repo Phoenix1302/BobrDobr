@@ -447,12 +447,27 @@ def perform_clean_settings_migration() -> int:
         "start_with_windows": False,
     }
 
-    # Write directly to installed_config_path with hardened disk encryption
+    # Write directly to installed_config_path with hardened disk encryption (atomic write)
     os.makedirs(os.path.dirname(installed_config_path), exist_ok=True)
     disk_data = copy.deepcopy(clean_data)
     disk_data["profiles"] = [_encrypt_profile_secrets(p) for p in sanitized_profiles]
-    with open(installed_config_path, "w", encoding="utf-8") as f:
-        json.dump(disk_data, f, indent=2, ensure_ascii=False)
+    tmp_installed = f"{installed_config_path}.tmp_{os.getpid()}"
+    try:
+        with open(tmp_installed, "w", encoding="utf-8") as f:
+            json.dump(disk_data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(tmp_installed, installed_config_path)
+    except Exception as e:
+        print(f"Failed to write installed config atomically: {e}")
+        if os.path.exists(tmp_installed):
+            try:
+                os.remove(tmp_installed)
+            except Exception:
+                pass
 
     if is_installed_mode():
         settings.data = clean_data
