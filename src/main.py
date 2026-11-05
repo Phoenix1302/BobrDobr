@@ -32,7 +32,7 @@ from utils.version import APP_VERSION, APP_TITLE, GITHUB_REPO, GITHUB_RELEASES_U
 from utils.config_store import settings
 from utils.github_updater import GitHubUpdateCheckerThread
 from utils.subscription_manager import SubscriptionManager
-from utils.single_instance import check_single_instance, release_single_instance
+from utils.single_instance import handle_startup_single_instance, check_single_instance, release_single_instance
 
 
 class SubscriptionSyncThread(QThread):
@@ -309,8 +309,29 @@ class MainWindow(QMainWindow):
         try:
             client = self._ipc_server.nextPendingConnection()
             if client:
-                client.readyRead.connect(lambda: client.readAll())
+                def handle_data():
+                    try:
+                        raw = bytes(client.readAll())
+                        cmd = raw.decode("utf-8", errors="ignore").strip()
+                        if "TERMINATE" in cmd:
+                            self._force_quitting = True
+                            self._clean_shutdown(wait=True)
+                            if hasattr(self, "tray_icon"):
+                                self.tray_icon.hide()
+                            self.close()
+                            QApplication.instance().quit()
+                            import os
+                            os._exit(0)
+                        else:
+                            self.restore_and_bring_to_front()
+                    except Exception:
+                        self.restore_and_bring_to_front()
+
+                client.readyRead.connect(handle_data)
                 client.disconnected.connect(client.deleteLater)
+                if client.bytesAvailable() > 0:
+                    handle_data()
+                return
         except Exception:
             pass
         self.restore_and_bring_to_front()
@@ -356,16 +377,53 @@ class MainWindow(QMainWindow):
             sys.exit(0)
 
     def _clean_shutdown(self, wait: bool = True):
-        if hasattr(self, "_ipc_server"):
+        # 1. Stop periodic timers
+        if hasattr(self, "_adapter_gc_timer"):
+            try:
+                self._adapter_gc_timer.stop()
+            except Exception:
+                pass
+        if hasattr(self, "timer"):
+            try:
+                self.timer.stop()
+            except Exception:
+                pass
+
+        # 2. Stop update checker and subscription background threads
+        if getattr(self, "_update_checker_thread", None) and self._update_checker_thread.isRunning():
+            try:
+                self._update_checker_thread.quit()
+                self._update_checker_thread.wait(500)
+            except Exception:
+                pass
+        if getattr(self, "_sub_sync_thread", None) and self._sub_sync_thread.isRunning():
+            try:
+                self._sub_sync_thread.quit()
+                self._sub_sync_thread.wait(500)
+            except Exception:
+                pass
+
+        # 3. Close IPC server
+        if hasattr(self, "_ipc_server") and self._ipc_server:
             try:
                 self._ipc_server.close()
                 self._ipc_server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
             except Exception:
                 pass
+
+        # 4. Stop VPN tunnels
         if hasattr(self, "amnezia_launcher") and (self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING):
-            self.amnezia_launcher.stop_connection(wait=wait)
+            try:
+                self.amnezia_launcher.stop_connection(wait=wait)
+            except Exception:
+                pass
         if hasattr(self, "openconnect_launcher") and (self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING):
-            self.openconnect_launcher.stop_connection(wait=wait)
+            try:
+                self.openconnect_launcher.stop_connection(wait=wait)
+            except Exception:
+                pass
+
+        # 5. Release single-instance mutex
         release_single_instance()
 
     def _update_tray_state(self, state: VPNState, vpn_name: str):
@@ -1578,34 +1636,82 @@ class MainWindow(QMainWindow):
         settings.set("window_height", self.height())
 
     def closeEvent(self, event):
-        # 1. Если вызвано принудительное завершение через меню трея
+        # 1. Если вызвано принудительное завершение через меню трея или IPC
         if getattr(self, "_force_quitting", False):
             self._clean_shutdown(wait=True)
             if hasattr(self, "tray_icon"):
                 self.tray_icon.hide()
             event.accept()
+            QApplication.instance().quit()
+            try:
+                import os
+                os._exit(0)
+            except Exception:
+                sys.exit(0)
             return
 
         is_vpn_active = self.amnezia_launcher.is_running() or self.openconnect_launcher.is_running()
         if is_vpn_active:
-            # 2. Если VPN активен — сворачиваем в трей по крестику
-            event.ignore()
-            self.hide()
-            if hasattr(self, "tray_icon") and not getattr(self, "_tray_minimized_hint_shown", False):
-                self.tray_icon.showMessage(
-                    "БобрДобр свёрнут в трей",
-                    "VPN-соединение остаётся активным в фоне. Кликните по бобру в трее для открытия окна.",
-                    QSystemTrayIcon.Information,
-                    3000
-                )
-                self._tray_minimized_hint_shown = True
+            # 2. Если VPN активен — спрашиваем пользователя: свернуть в трей или отключить и выйти
+            active_name = "VPN"
+            if self.active_profile_id:
+                p = settings.get_profile(self.active_profile_id)
+                if p:
+                    active_name = p.get("name", "VPN")
+
+            dlg = QMessageBox(self)
+            dlg.setWindowTitle("БобрДобр VPN — Активное соединение")
+            dlg.setIcon(QMessageBox.Question)
+            dlg.setText(f"В данный момент активно VPN-соединение «{active_name}».")
+            dlg.setInformativeText("Что вы хотите сделать?")
+            btn_tray = dlg.addButton("Свернуть в трей", QMessageBox.AcceptRole)
+            btn_quit = dlg.addButton("Отключить VPN и выйти", QMessageBox.DestructiveRole)
+            btn_cancel = dlg.addButton("Отмена", QMessageBox.RejectRole)
+            dlg.setDefaultButton(btn_tray)
+            dlg.exec()
+
+            clicked = dlg.clickedButton()
+            if clicked == btn_tray:
+                event.ignore()
+                self.hide()
+                if hasattr(self, "tray_icon") and not getattr(self, "_tray_minimized_hint_shown", False):
+                    self.tray_icon.showMessage(
+                        "БобрДобр свёрнут в трей",
+                        "VPN-соединение остаётся активным в фоне. Кликните по бобру в трее для открытия окна.",
+                        QSystemTrayIcon.Information,
+                        3000
+                    )
+                    self._tray_minimized_hint_shown = True
+                return
+            elif clicked == btn_quit:
+                self._force_quitting = True
+                self._clean_shutdown(wait=True)
+                if hasattr(self, "tray_icon"):
+                    self.tray_icon.hide()
+                event.accept()
+                QApplication.instance().quit()
+                try:
+                    import os
+                    os._exit(0)
+                except Exception:
+                    sys.exit(0)
+                return
+            else:
+                event.ignore()
+                return
         else:
-            # 3. Если VPN не активен — обычное закрытие программы
+            # 3. Если VPN не активен — обычное чистое закрытие программы без зависания в фоне
+            self._force_quitting = True
             self._clean_shutdown(wait=True)
             if hasattr(self, "tray_icon"):
                 self.tray_icon.hide()
             event.accept()
             QApplication.instance().quit()
+            try:
+                import os
+                os._exit(0)
+            except Exception:
+                sys.exit(0)
 
     def _run_periodic_adapter_cleanup(self):
         """Asynchronously cleans up orphaned Wintun adapters named bobr* or legacy awg*."""
@@ -1721,22 +1827,7 @@ def main():
     app.setOrganizationName("BobrDobr")
     app.setQuitOnLastWindowClosed(False)
 
-    if is_windows():
-        try:
-            import ctypes
-            # Permanently protect the host Python GUI process against console signals (CTRL_C_EVENT, CTRL_BREAK_EVENT)
-            ctypes.windll.kernel32.SetConsoleCtrlHandler(None, True)
-        except Exception:
-            pass
-        if not check_single_instance(show_dialog=False):
-            sys.exit(0)
-        try:
-            import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("BobrDobr.VPN.Client.1")
-        except Exception:
-            pass
-
-    # Устанавливаем глобальную иконку приложения для всех окон и диалогов
+    # 1. Устанавливаем глобальную иконку приложения для всех окон и диалогов
     ico_candidates = [
         os.path.join(get_base_dir(), "assets", "beaver.ico"),
         os.path.join(get_base_dir(), "src", "assets", "beaver.ico"),
@@ -1751,7 +1842,7 @@ def main():
                 app.setWindowIcon(app_icon)
                 break
 
-    # Включаем стиль Fusion и тёмную палитру для устранения белых системных фонов в Windows
+    # 2. Включаем стиль Fusion и тёмную палитру для устранения белых системных фонов в Windows
     app.setStyle("Fusion")
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor("#0f1416"))
@@ -1773,14 +1864,42 @@ def main():
 
     app.setStyleSheet(get_stylesheet())
 
-    # Глобальный фильтр для курсора руки на всех кнопках интерфейса
+    # 3. Глобальный фильтр для курсора руки на всех кнопках интерфейса
     hover_filter = GlobalButtonHoverFilter(app)
     app.installEventFilter(hover_filter)
+
+    # 4. Windows защита консоли, AppUserModelID и интерактивная проверка одиночного экземпляра
+    if is_windows():
+        try:
+            import ctypes
+            # Permanently protect the host Python GUI process against console signals (CTRL_C_EVENT, CTRL_BREAK_EVENT)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(None, True)
+        except Exception:
+            pass
+
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("BobrDobr.VPN.Client.1")
+        except Exception:
+            pass
+
+        # Интерактивная обработка дублирующих экземпляров и зависших фоновых процессов
+        if not handle_startup_single_instance(app):
+            sys.exit(0)
 
     window = MainWindow()
     app.aboutToQuit.connect(lambda: window._clean_shutdown(wait=True))
     window.show()
-    sys.exit(app.exec())
+    ret = app.exec()
+    try:
+        window._clean_shutdown(wait=True)
+    except Exception:
+        pass
+    try:
+        import os
+        os._exit(ret)
+    except Exception:
+        sys.exit(ret)
 
 
 if __name__ == "__main__":

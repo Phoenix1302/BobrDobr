@@ -18,10 +18,12 @@ from core.amnezia import AmneziaWGLauncher
 from gui.profile_card import VPNProfileCard
 from utils.single_instance import UNIFIED_MUTEX_NAME, check_single_instance, release_single_instance
 
-# Ensure QCoreApplication is initialized for Qt signal/slot operations in headless Wine
-app = QCoreApplication.instance()
+# Ensure QApplication is initialized for Qt signal/slot and GUI operations in headless Wine
+from PySide6.QtWidgets import QApplication
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+app = QApplication.instance()
 if app is None:
-    app = QCoreApplication([])
+    app = QApplication([])
 
 
 class DummyLauncher(VPNLauncherBase):

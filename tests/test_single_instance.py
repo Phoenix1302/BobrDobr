@@ -8,8 +8,15 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
+# Ensure headless offscreen platform for Qt tests
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 # Ensure src/ is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from PySide6.QtWidgets import QApplication
+if QApplication.instance() is None:
+    _global_test_app = QApplication(sys.argv)
 
 from utils.single_instance import (
     UNIFIED_MUTEX_NAME,
@@ -20,7 +27,15 @@ from utils.single_instance import (
     activate_existing_window,
     show_already_running_message,
     _create_mutex_security_attributes,
+    try_acquire_single_instance,
+    find_other_bobrdobr_processes,
+    is_process_alive,
+    terminate_bobrdobr_process,
+    terminate_all_bobrdobr_processes,
+    terminate_orphaned_vpn_daemons,
+    handle_startup_single_instance,
 )
+from gui.instance_dialog import InstanceConflictDialog
 from utils.config_store import ConfigStore
 
 
@@ -188,12 +203,12 @@ class TestSingleInstanceUnified(unittest.TestCase):
 
     def test_activate_existing_window_ipc(self):
         """Tests that activate_existing_window connects to QLocalServer and delivers activation request."""
-        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtWidgets import QApplication
         from PySide6.QtNetwork import QLocalServer
 
-        app = QCoreApplication.instance()
+        app = QApplication.instance()
         if app is None:
-            app = QCoreApplication(sys.argv)
+            app = QApplication(sys.argv)
 
         server = QLocalServer()
         server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
@@ -276,6 +291,139 @@ class TestConfigAtomicSaveAndRecovery(unittest.TestCase):
         prof = recovered_store.get_profile("prof1")
         self.assertIsNotNone(prof)
         self.assertEqual(prof.get("name"), "Protected Profile")
+
+
+class TestProcessManagerAndTermination(unittest.TestCase):
+    """Tests for process discovery, alive check, and cross-integrity termination."""
+
+    def test_is_process_alive_with_current_pid(self):
+        """Current process PID must be recognized as alive."""
+        self.assertTrue(is_process_alive(os.getpid()))
+        self.assertFalse(is_process_alive(-1))
+        self.assertFalse(is_process_alive(0))
+
+    @patch("subprocess.run")
+    @patch("utils.single_instance.is_process_alive")
+    def test_terminate_bobrdobr_process_standard(self, mock_alive, mock_run):
+        """Tests that standard taskkill is invoked and succeeds when process dies."""
+        # Process alive initially and after IPC, then dies after taskkill
+        mock_alive.side_effect = [True, True, False, False, False, False]
+        mock_run.return_value = MagicMock(returncode=0)
+
+        res = terminate_bobrdobr_process(pid=12345, timeout_sec=1.0)
+        self.assertTrue(res)
+        all_calls = [c[0][0] for c in mock_run.call_args_list if c[0] and isinstance(c[0][0], list)]
+        self.assertTrue(any("12345" in cmd for cmd in all_calls))
+
+    @patch("ctypes.windll.shell32.ShellExecuteW")
+    @patch("subprocess.run")
+    @patch("utils.single_instance.is_process_alive")
+    def test_terminate_bobrdobr_process_uac_escalation(self, mock_alive, mock_run, mock_shellexec):
+        """
+        Tests that when standard taskkill fails to kill an elevated process,
+        ShellExecuteW is invoked with 'runas' to escalate via Windows UAC.
+        """
+        mock_run.return_value = MagicMock(returncode=1)  # Access Denied
+        mock_shellexec.return_value = 42  # Success > 32
+
+        # Process stays alive through IPC and standard taskkill, dies after UAC ShellExecuteW
+        def alive_side_effect(p):
+            return not mock_shellexec.called
+        mock_alive.side_effect = alive_side_effect
+
+        res = terminate_bobrdobr_process(pid=99999, timeout_sec=1.0)
+        self.assertTrue(res)
+        mock_shellexec.assert_called_once_with(
+            None,
+            "runas",
+            "taskkill.exe",
+            "/F /T /PID 99999",
+            None,
+            0
+        )
+
+    def test_instance_conflict_dialog_creation(self):
+        """Verifies that InstanceConflictDialog constructs cleanly in both active and ghost modes."""
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication(sys.argv)
+
+        # Ghost mode
+        dlg_ghost = InstanceConflictDialog(
+            proc_info={"pid": 1111, "mode": "Портативная версия"},
+            is_ghost=True
+        )
+        self.assertIn("фоновый", dlg_ghost.windowTitle().lower())
+        dlg_ghost.close()
+
+        # Active mode
+        dlg_active = InstanceConflictDialog(
+            proc_info={"pid": 2222, "mode": "Установленная версия"},
+            is_ghost=False
+        )
+        self.assertIn("уже запущен", dlg_active.windowTitle().lower())
+        dlg_active.close()
+
+
+class TestInteractiveInstanceStartup(unittest.TestCase):
+    """Tests startup conflict resolution flows in handle_startup_single_instance."""
+
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication(sys.argv)
+
+    def tearDown(self):
+        release_single_instance()
+
+    @patch("utils.single_instance.try_acquire_single_instance")
+    def test_startup_clean_run(self, mock_acquire):
+        """When mutex is free, handle_startup_single_instance returns True immediately."""
+        mock_acquire.return_value = True
+        res = handle_startup_single_instance(self.app)
+        self.assertTrue(res)
+
+    @patch("utils.single_instance.find_other_bobrdobr_processes")
+    @patch("gui.instance_dialog.InstanceConflictDialog")
+    @patch("utils.single_instance.activate_existing_window")
+    @patch("utils.single_instance.terminate_all_bobrdobr_processes")
+    @patch("utils.single_instance.try_acquire_single_instance")
+    def test_startup_collision_user_terminates_other(
+        self, mock_acquire, mock_terminate, mock_activate, mock_dlg_class, mock_find
+    ):
+        """
+        When collision occurs and user clicks 'Завершить другой экземпляр',
+        the other instance is terminated, mutex re-acquired, and startup returns True.
+        """
+        from PySide6.QtWidgets import QDialog
+        mock_dlg = MagicMock()
+        mock_dlg.exec.return_value = QDialog.Accepted
+        mock_dlg_class.return_value = mock_dlg
+
+        mock_find.return_value = [{"pid": 12345, "mode": "Портативная версия"}]
+        # First acquire fails (collision), second acquire after termination succeeds
+        mock_acquire.side_effect = [False, True]
+        mock_activate.return_value = True
+        mock_terminate.return_value = True
+
+        res = handle_startup_single_instance(self.app)
+        self.assertTrue(res)
+        mock_terminate.assert_called_once()
+
+    @patch("gui.instance_dialog.InstanceConflictDialog")
+    @patch("utils.single_instance.activate_existing_window")
+    @patch("utils.single_instance.try_acquire_single_instance")
+    def test_startup_collision_user_cancels(self, mock_acquire, mock_activate, mock_dlg_class):
+        """When user clicks 'Оставить активное окно' or Cancel, startup returns False."""
+        from PySide6.QtWidgets import QDialog
+        mock_dlg = MagicMock()
+        mock_dlg.exec.return_value = QDialog.Rejected
+        mock_dlg_class.return_value = mock_dlg
+
+        mock_acquire.return_value = False
+        mock_activate.return_value = True
+
+        res = handle_startup_single_instance(self.app)
+        self.assertFalse(res)
 
 
 if __name__ == "__main__":
