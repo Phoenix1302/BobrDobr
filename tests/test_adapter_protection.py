@@ -17,6 +17,11 @@ from utils.platform_helper import (
     prepare_tunnel_adapter,
     is_network_adapter_present,
     get_persistent_bin_dir,
+    get_next_available_tunnel_adapter,
+    reset_adapter_rotation,
+    is_tunnel_adapter_busy,
+    get_wintun_device_instances,
+    delete_wintun_adapter,
 )
 from core.amnezia import AmneziaWGLauncher
 from core.openconnect import OpenConnectLauncher
@@ -177,6 +182,94 @@ class TestAdapterAndProcessProtection(unittest.TestCase):
         # Older cleanup worker check:
         self.assertNotEqual(launcher._session_run_id, stop_token)
         # Therefore, old cleanup worker aborts without touching the new connection!
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_get_next_available_tunnel_adapter_rotation(self, mock_win):
+        """Verifies clean ping-pong rotation between awg0 and awg1 on reconnects."""
+        reset_adapter_rotation()
+        with patch("utils.platform_helper.is_tunnel_adapter_busy", return_value=False):
+            # First call with preferred awg0 -> picks awg0
+            first = get_next_available_tunnel_adapter("awg0")
+            self.assertEqual(first, "awg0")
+
+            # Rapid reconnect / hot switch -> rotates to awg1
+            second = get_next_available_tunnel_adapter("awg0")
+            self.assertEqual(second, "awg1")
+
+            # Next reconnect -> rotates back to awg0
+            third = get_next_available_tunnel_adapter("awg0")
+            self.assertEqual(third, "awg0")
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_get_next_available_tunnel_adapter_detects_swd_wintun(self, mock_win):
+        """Verifies that an adapter registered in SWD\\WINTUN registry is detected as busy and skipped."""
+        reset_adapter_rotation()
+        with patch("utils.platform_helper.is_network_adapter_present", return_value=False), \
+             patch("utils.platform_helper.get_wintun_device_instances", return_value=["SWD\\WINTUN\\{GUID1}"]), \
+             patch("utils.platform_helper.get_wintun_interface_for_instance", return_value="awg0"):
+
+            # awg0 is registered in SWD\WINTUN
+            self.assertTrue(is_tunnel_adapter_busy("awg0"))
+            self.assertFalse(is_tunnel_adapter_busy("awg1"))
+
+            # get_next_available_tunnel_adapter should skip awg0 and choose awg1
+            cand = get_next_available_tunnel_adapter("awg0")
+            self.assertEqual(cand, "awg1")
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_get_next_available_tunnel_adapter_skips_multiple_busy(self, mock_win):
+        """If awg0 and awg1 are busy, dynamically selects awg2."""
+        reset_adapter_rotation()
+        def mock_busy(name):
+            return name in ("awg0", "awg1")
+
+        with patch("utils.platform_helper.is_tunnel_adapter_busy", side_effect=mock_busy):
+            cand = get_next_available_tunnel_adapter("awg0")
+            self.assertEqual(cand, "awg2")
+
+    @patch("core.amnezia.is_windows", return_value=True)
+    def test_amnezia_start_connection_uses_dynamic_rotated_adapter(self, mock_win):
+        """Verifies AmneziaWGLauncher.start_connection invokes get_next_available_tunnel_adapter and sets interface."""
+        launcher = AmneziaWGLauncher()
+        with patch("core.amnezia.get_next_available_tunnel_adapter", return_value="awg1") as mock_get_iface, \
+             patch("core.amnezia.prepare_tunnel_adapter", return_value=(True, "awg1")), \
+             patch("core.amnezia.find_binary", return_value=r"C:\bin\amneziawg-go.exe"), \
+             patch.object(launcher, "_spawn_process", return_value=True) as mock_spawn:
+
+            ok = launcher.start_connection(
+                config_content="[Interface]\nPrivateKey = aaaa\nAddress = 10.0.0.2/32\n",
+                interface_name="awg0"
+            )
+            self.assertTrue(ok)
+            mock_get_iface.assert_called_with("awg0")
+            self.assertEqual(launcher.interface_name, "awg1")
+            # Verify command line has '-name' 'awg1'
+            called_cmd = mock_spawn.call_args[1]["cmd"]
+            self.assertIn("-name", called_cmd)
+            idx = called_cmd.index("-name")
+            self.assertEqual(called_cmd[idx + 1], "awg1")
+
+    @patch("utils.platform_helper.is_windows", return_value=True)
+    def test_delete_wintun_adapter_targets_only_specified_interface(self, mock_win):
+        """Verifies delete_wintun_adapter('awg0') only removes the device matching awg0."""
+        instances = ["SWD\\WINTUN\\{GUID_AWG0}", "SWD\\WINTUN\\{GUID_AWG1}"]
+
+        def mock_iface(inst):
+            if "{GUID_AWG0}" in inst:
+                return "awg0"
+            return "awg1"
+
+        with patch("utils.platform_helper.get_wintun_device_instances", return_value=instances), \
+             patch("utils.platform_helper.get_wintun_interface_for_instance", side_effect=mock_iface), \
+             patch("utils.platform_helper.is_network_adapter_present", return_value=False), \
+             patch("utils.platform_helper.run_silent_cmd") as mock_cmd:
+
+            delete_wintun_adapter("awg0")
+            # Only GUID_AWG0 should be removed!
+            called_args = [call[0][0] for call in mock_cmd.call_args_list]
+            self.assertEqual(len(called_args), 1)
+            self.assertIn("SWD\\WINTUN\\{GUID_AWG0}", called_args[0])
+            self.assertNotIn("SWD\\WINTUN\\{GUID_AWG1}", str(called_args))
 
 
 if __name__ == "__main__":

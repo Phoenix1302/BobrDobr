@@ -11,7 +11,7 @@ from utils.platform_helper import (
     find_binary, get_wintun_path, is_windows, is_linux, run_silent_cmd,
     kill_amnezia_daemons, delete_wintun_adapter,
     is_process_running, is_network_adapter_present, get_wintun_device_instances,
-    prepare_tunnel_adapter
+    prepare_tunnel_adapter, get_next_available_tunnel_adapter, cleanup_stale_temp_configs
 )
 
 
@@ -62,9 +62,10 @@ class AmneziaWGLauncher(VPNLauncherBase):
         Prepares the tunnel configuration (directly from settings config_content or file),
         resolves binary & wintun.dll, and spawns the tunnel process.
         """
-        if self.is_running() or self.state == VPNState.DISCONNECTING:
-            self.log("Previous AmneziaWG connection is still active or disconnecting. Waiting for clean shutdown...", "sys")
-            self.stop_connection(wait=True)
+        # If previous connection is still active and stop was not requested, soft stop it
+        if self.is_running() and not self._stop_requested.is_set():
+            self.log("Stopping previous AmneziaWG connection...", "sys")
+            self.stop_connection(wait=False)
 
         active_config_path: Optional[str] = None
 
@@ -135,20 +136,20 @@ class AmneziaWGLauncher(VPNLauncherBase):
         self._session_run_id += 1
 
         try:
-            # Windows: check if adapter is busy, clear orphaned BobrDobr daemons, and fallback if necessary
+            # Windows: select next available tunnel adapter via rotation & safe check before building cmd
             if is_windows():
                 try:
+                    assigned_iface = get_next_available_tunnel_adapter(self.interface_name)
+                    if assigned_iface != self.interface_name:
+                        self.log(
+                            f"Адаптер '{self.interface_name}' ротирован/переключен на свободный интерфейс '{assigned_iface}'.",
+                            "sys"
+                        )
+                    self.interface_name = assigned_iface
+
                     ok, ready_iface = prepare_tunnel_adapter(self.interface_name)
-                    if ok:
-                        if ready_iface != self.interface_name:
-                            self.log(
-                                f"Адаптер '{self.interface_name}' занят другим процессом. "
-                                f"Автоматически переключено на свободный интерфейс '{ready_iface}'.",
-                                "sys"
-                            )
-                            self.interface_name = ready_iface
-                    else:
-                        self.log(f"Предупреждение: Адаптер '{self.interface_name}' занят.", "sys")
+                    if ok and ready_iface != self.interface_name:
+                        self.interface_name = ready_iface
                 except Exception as e:
                     self.log(f"Предупреждение при подготовке адаптера: {e}", "sys")
 
@@ -206,6 +207,8 @@ class AmneziaWGLauncher(VPNLauncherBase):
 
         target_proc = self._process
         target_iface = self.interface_name
+        target_temp_cfg = self._temp_config
+        self._temp_config = None
         super().stop_connection(wait=wait)
 
         stop_token = self._session_run_id
@@ -213,8 +216,17 @@ class AmneziaWGLauncher(VPNLauncherBase):
             def cleanup_worker():
                 if not wait:
                     # Allow amneziawg-go and Wintun driver sufficient time for graceful adapter and route teardown
-                    time.sleep(4.0)
-                # If a new connection started in the meantime, abort cleanup
+                    time.sleep(6.5)
+
+                # Clean up the temporary config of the stopped session safely
+                if target_temp_cfg and os.path.exists(target_temp_cfg):
+                    try:
+                        os.remove(target_temp_cfg)
+                    except Exception:
+                        pass
+                cleanup_stale_temp_configs()
+
+                # If a new connection started in the meantime, abort device/daemon cleanup
                 if self._session_run_id != stop_token:
                     return
                 if self.state in (VPNState.CONNECTING, VPNState.CONNECTED):
@@ -239,13 +251,13 @@ class AmneziaWGLauncher(VPNLauncherBase):
             else:
                 import threading
                 threading.Thread(target=cleanup_worker, daemon=True).start()
-
-        if self._temp_config and os.path.exists(self._temp_config):
-            try:
-                os.remove(self._temp_config)
-            except Exception:
-                pass
-            self._temp_config = None
+        else:
+            if target_temp_cfg and os.path.exists(target_temp_cfg):
+                try:
+                    os.remove(target_temp_cfg)
+                except Exception:
+                    pass
+            cleanup_stale_temp_configs()
 
     def _parse_log_line(self, line: str, channel: str) -> None:
         """Monitors stdout/stderr output for connection handshake and errors."""

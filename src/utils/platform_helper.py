@@ -444,48 +444,13 @@ def cleanup_orphaned_vpn_daemons(only_this_app: bool = True) -> None:
     kill_openconnect_daemons(only_this_app=only_this_app)
 
 
-def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
-    """
-    Pre-connection safety gate for Wintun / WireGuard network adapters:
-    1. Terminates any lingering/orphaned daemon processes belonging to this application.
-    2. Checks if the requested adapter is present in the network stack.
-    3. If present and lingering without active processes, cleans up the phantom adapter device.
-    4. If the adapter is occupied by another process/software, finds an available fallback (awg1, awg2, etc.).
-    Returns (success, ready_interface_name).
-    """
-    if not is_windows():
-        return True, interface_name
+_LAST_ASSIGNED_ADAPTER: Optional[str] = None
 
-    target_iface = (interface_name or "").strip() or "awg0"
 
-    # 1. Clean up any orphaned BobrDobr daemon processes
-    pids = get_bobrdobr_daemon_pids(["amneziawg-go.exe", "amneziawg.exe", "wireguard.exe"])
-    if pids:
-        kill_bobrdobr_daemons(pids)
-        import time
-        time.sleep(0.1)
-
-    # 2. Check if the target adapter already exists
-    if not is_network_adapter_present(target_iface):
-        return True, target_iface
-
-    # 3. Adapter exists: attempt fast removal of stale/phantom device
-    delete_wintun_adapter(target_iface)
-    import time
-    for _ in range(6):
-        time.sleep(0.05)
-        if not is_network_adapter_present(target_iface):
-            return True, target_iface
-
-    # 4. If target_iface is STILL present, it might be actively occupied by another process/client.
-    # Automatically scan for a free alternative interface name (awg1 .. awg9)
-    prefix = "".join(c for c in target_iface if not c.isdigit()) or "awg"
-    for idx in range(1, 10):
-        candidate = f"{prefix}{idx}"
-        if not is_network_adapter_present(candidate):
-            return True, candidate
-
-    return False, target_iface
+def reset_adapter_rotation() -> None:
+    """Resets the adapter rotation tracker (used in unit tests and re-initialization)."""
+    global _LAST_ASSIGNED_ADAPTER
+    _LAST_ASSIGNED_ADAPTER = None
 
 
 def get_wintun_device_instances() -> List[str]:
@@ -509,20 +474,215 @@ def get_wintun_device_instances() -> List[str]:
     return instances
 
 
+def get_wintun_interface_for_instance(instance_id: str) -> Optional[str]:
+    """
+    Resolves the network interface name (e.g. 'awg0') for a given SWD\\WINTUN\\{GUID} device instance.
+    Checks Network Connection name in registry, then FriendlyName / DeviceDesc.
+    """
+    if not is_windows() or not instance_id:
+        return None
+    import winreg
+    guid = instance_id.split("\\")[-1]
+
+    # 1. Check Network connection name
+    net_path = rf"SYSTEM\CurrentControlSet\Control\Network\{{4d36e972-e325-11ce-bfc1-08002be10318}}\{guid}\Connection"
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, net_path, 0, winreg.KEY_READ) as k:
+            name, _ = winreg.QueryValueEx(k, "Name")
+            if name:
+                return str(name).strip()
+    except (FileNotFoundError, OSError):
+        pass
+
+    # 2. Check FriendlyName or DeviceDesc under Enum\SWD\WINTUN\{guid}
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SYSTEM\CurrentControlSet\Enum\SWD\WINTUN\{guid}", 0, winreg.KEY_READ) as k:
+            for prop in ["FriendlyName", "DeviceDesc"]:
+                try:
+                    val, _ = winreg.QueryValueEx(k, prop)
+                    if val:
+                        s_val = str(val).strip()
+                        if s_val.lower() not in ("wireguard tunnel", "wintun userspace tunnel"):
+                            return s_val
+                except (FileNotFoundError, OSError):
+                    pass
+    except (FileNotFoundError, OSError):
+        pass
+
+    return None
+
+
+def is_tunnel_adapter_busy(adapter_name: str) -> bool:
+    """
+    Checks if a network adapter is currently active, occupied, or in the process
+    of PnP teardown in Windows.
+    Verifies both the network interface stack and SWD\\WINTUN registry instances.
+    """
+    if not is_windows() or not adapter_name:
+        return False
+
+    target = adapter_name.strip().lower()
+
+    # 1. Fast network stack presence check
+    if is_network_adapter_present(target):
+        return True
+
+    # 2. Check registered Wintun devices via get_wintun_device_instances()
+    try:
+        for inst_id in get_wintun_device_instances():
+            iface_name = get_wintun_interface_for_instance(inst_id)
+            if iface_name and iface_name.lower() == target:
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+def get_next_available_tunnel_adapter(preferred: str = "awg0") -> str:
+    """
+    Selects the next clean, available tunnel adapter for AmneziaWG/WireGuard:
+    1. Checks not only is_network_adapter_present, but also the SWD\\WINTUN registry
+       via get_wintun_device_instances().
+    2. Implements rotation between adapters (e.g. awg0 -> awg1 -> awg0) on rapid
+       reconnects or hot-switches to avoid waiting for Windows PnP teardown of the old device.
+    3. If preferred is busy or in teardown, dynamically finds the next free adapter (awg1, awg2, ...).
+    """
+    global _LAST_ASSIGNED_ADAPTER
+
+    if not is_windows():
+        return preferred or "awg0"
+
+    target_pref = (preferred or "awg0").strip()
+    prefix = "".join(c for c in target_pref if not c.isdigit()) or "awg"
+
+    # Determine candidate order with rotation:
+    # If _LAST_ASSIGNED_ADAPTER was awg0, rotate to awg1 first, then awg0, awg2, etc.
+    # If _LAST_ASSIGNED_ADAPTER was awg1, rotate to awg0 first, then awg1, awg2, etc.
+    candidates = []
+    if _LAST_ASSIGNED_ADAPTER and _LAST_ASSIGNED_ADAPTER.startswith(prefix):
+        try:
+            last_idx = int("".join(c for c in _LAST_ASSIGNED_ADAPTER if c.isdigit()))
+        except ValueError:
+            last_idx = 0
+
+        # Alternate between 0 and 1 primarily for smooth two-adapter ping-pong (awg0 <-> awg1)
+        if last_idx == 0:
+            preferred_order = [1, 0] + [i for i in range(2, 10)]
+        elif last_idx == 1:
+            preferred_order = [0, 1] + [i for i in range(2, 10)]
+        else:
+            preferred_order = [0, 1] + [i for i in range(2, 10) if i != last_idx]
+            preferred_order.append(last_idx)
+
+        for idx in preferred_order:
+            candidates.append(f"{prefix}{idx}")
+    else:
+        # First call: target_pref first, then alternate
+        try:
+            pref_idx = int("".join(c for c in target_pref if c.isdigit()))
+        except ValueError:
+            pref_idx = 0
+
+        if pref_idx == 0:
+            order = [0, 1] + [i for i in range(2, 10)]
+        elif pref_idx == 1:
+            order = [1, 0] + [i for i in range(2, 10)]
+        else:
+            order = [pref_idx, 0, 1] + [i for i in range(2, 10) if i != pref_idx]
+
+        for idx in order:
+            candidates.append(f"{prefix}{idx}")
+
+    # Remove duplicates preserving order
+    seen = set()
+    ordered_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            ordered_candidates.append(c)
+
+    # Scan for first non-busy adapter
+    for cand in ordered_candidates:
+        if not is_tunnel_adapter_busy(cand):
+            _LAST_ASSIGNED_ADAPTER = cand
+            return cand
+
+    # Fallback if all 0..9 are busy
+    fallback = ordered_candidates[0]
+    _LAST_ASSIGNED_ADAPTER = fallback
+    return fallback
+
+
+def prepare_tunnel_adapter(interface_name: str = "awg0") -> Tuple[bool, str]:
+    """
+    Pre-connection safety gate for Wintun / WireGuard network adapters:
+    1. Terminates any lingering/orphaned daemon processes belonging to this application.
+    2. Checks if the requested adapter is present and busy.
+    3. If present and lingering without active processes, cleans up phantom adapter device.
+    4. If the adapter is occupied, finds an available fallback (awg1, awg2, etc.) using safe checks
+       without blocking.
+    Returns (success, ready_interface_name).
+    """
+    if not is_windows():
+        return True, interface_name
+
+    target_iface = (interface_name or "").strip() or "awg0"
+
+    # 1. Clean up any orphaned BobrDobr daemon processes
+    pids = get_bobrdobr_daemon_pids(["amneziawg-go.exe", "amneziawg.exe", "wireguard.exe"])
+    if pids:
+        kill_bobrdobr_daemons(pids)
+        import time
+        time.sleep(0.1)
+
+    # 2. Check if the target adapter is free
+    if not is_network_adapter_present(target_iface) and not is_tunnel_adapter_busy(target_iface):
+        return True, target_iface
+
+    # 3. Adapter exists: attempt fast removal of stale/phantom device
+    delete_wintun_adapter(target_iface)
+    import time
+    for _ in range(3):
+        time.sleep(0.05)
+        if not is_network_adapter_present(target_iface):
+            return True, target_iface
+
+    # 4. If target_iface is STILL present or busy, automatically select a free alternative
+    # without blocking the launch.
+    alt_iface = get_next_available_tunnel_adapter(target_iface)
+    if alt_iface and alt_iface != target_iface and not is_tunnel_adapter_busy(alt_iface):
+        return True, alt_iface
+
+    prefix = "".join(c for c in target_iface if not c.isdigit()) or "awg"
+    for idx in range(1, 10):
+        cand = f"{prefix}{idx}"
+        if not is_network_adapter_present(cand) and not is_tunnel_adapter_busy(cand):
+            return True, cand
+
+    return False, target_iface
+
+
 def delete_wintun_adapter(interface_name: str = "") -> None:
     """
     Finds and removes stale/phantom Wintun or WireGuard adapters.
-    1. Instantly queries SWD\\WINTUN registry instances (<0.1ms).
-    2. Removes any detected Wintun devices via direct pnputil /remove-device calls (~20ms each, NO PowerShell!).
-    3. If an interface_name is specified and still present in network adapters, cleans it up.
+    1. If interface_name is provided, removes only the Wintun device matching that interface.
+    2. If interface_name is empty, cleans all detected Wintun devices.
+    3. If the interface still exists in the network stack, runs PowerShell netadapter removal as fallback.
     """
     if not is_windows():
         return
 
-    # Direct fast removal of all SWD\WINTUN devices (takes ~20ms, no PowerShell)
     instances = get_wintun_device_instances()
+    target_name = (interface_name or "").strip().lower()
+
     for inst_id in instances:
         try:
+            # If a specific interface was requested, verify this instance matches it
+            if target_name:
+                inst_iface = get_wintun_interface_for_instance(inst_id)
+                if inst_iface and inst_iface.lower() != target_name:
+                    continue
             run_silent_cmd(["pnputil.exe", "/remove-device", inst_id, "/subtree"], timeout=4)
         except Exception:
             pass

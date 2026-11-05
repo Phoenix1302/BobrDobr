@@ -138,6 +138,57 @@ class TestReconnectRaceConditionSafety(unittest.TestCase):
             launcher.start_connection()
             mock_stop.assert_called_with(wait=True)
 
+    def test_shutdown_worker_timeout_increased_to_6s(self):
+        """Verifies shutdown_worker waits up to 6.0 seconds for graceful teardown."""
+        launcher = DummyLauncher()
+        old_proc = MagicMock()
+        old_proc.pid = 7777
+        old_proc.poll.return_value = None
+        old_proc.wait.return_value = 0
+        launcher._process = old_proc
+        launcher._state = VPNState.CONNECTED
+
+        with patch("core.vpn_manager.is_windows", return_value=True), \
+             patch("core.vpn_manager.send_graceful_windows_signal", return_value=True):
+            launcher.stop_connection(wait=True)
+            # Must be called with timeout=6.0
+            old_proc.wait.assert_called_with(timeout=6.0)
+
+    def test_shutdown_worker_avoids_taskkill_if_terminated_cleanly(self):
+        """Verifies taskkill is NOT invoked when process exits within 6.0s timeout."""
+        launcher = DummyLauncher()
+        old_proc = MagicMock()
+        old_proc.pid = 8888
+        old_proc.poll.return_value = None
+        old_proc.wait.return_value = 0
+        launcher._process = old_proc
+        launcher._state = VPNState.CONNECTED
+
+        with patch("core.vpn_manager.is_windows", return_value=True), \
+             patch("core.vpn_manager.send_graceful_windows_signal", return_value=True), \
+             patch("core.vpn_manager.run_silent_cmd") as mock_cmd:
+            launcher.stop_connection(wait=True)
+            mock_cmd.assert_not_called()
+
+    def test_shutdown_worker_taskkill_only_if_hung(self):
+        """Verifies taskkill is executed ONLY if process remains hung after terminate."""
+        import subprocess
+        launcher = DummyLauncher()
+        old_proc = MagicMock()
+        old_proc.pid = 9999
+        # poll is None initially and remains None after terminate
+        old_proc.poll.return_value = None
+        old_proc.wait.side_effect = subprocess.TimeoutExpired(cmd="dummy", timeout=6.0)
+        launcher._process = old_proc
+        launcher._state = VPNState.CONNECTED
+
+        with patch("core.vpn_manager.is_windows", return_value=True), \
+             patch("core.vpn_manager.send_graceful_windows_signal", return_value=True), \
+             patch("core.vpn_manager.run_silent_cmd") as mock_cmd:
+            launcher.stop_connection(wait=True)
+            old_proc.terminate.assert_called_once()
+            mock_cmd.assert_called_once_with(["taskkill", "/F", "/T", "/PID", "9999"], timeout=3)
+
     def test_shutdown_worker_does_not_null_new_process_reference(self):
         """
         If a new connection started while the old one was shutting down in the background,

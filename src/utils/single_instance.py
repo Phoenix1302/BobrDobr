@@ -40,25 +40,31 @@ def activate_existing_window() -> bool:
     Uses multi-channel activation:
       1. QLocalSocket IPC to 'BobrDobr_VPN_SingleInstance_IPC' (triggers Qt showNormal directly in main thread)
       2. Windows Registered Window Message (WM_BOBRDOBR_ACTIVATE)
-      3. Win32 EnumWindows with AttachThreadInput foreground lock bypass and SW_RESTORE
+      3. Win32 EnumWindows with Alt-key focus lock bypass and SW_RESTORE
     """
-    activated = False
+    # Grant permission to the existing instance process to take foreground focus
+    if is_windows():
+        try:
+            import ctypes
+            ctypes.windll.user32.AllowSetForegroundWindow(0xFFFFFFFF)
+        except Exception:
+            pass
 
     # Channel 1: QLocalSocket IPC (wakes up Qt event loop and restores window from tray)
     try:
         from PySide6.QtNetwork import QLocalSocket
         sock = QLocalSocket()
         sock.connectToServer("BobrDobr_VPN_SingleInstance_IPC")
-        if sock.waitForConnected(600):
+        if sock.waitForConnected(700):
             sock.write(b"ACTIVATE\n")
             sock.flush()
-            sock.waitForBytesWritten(600)
+            sock.waitForBytesWritten(700)
             sock.disconnectFromServer()
-            activated = True
+            return True
     except Exception:
         pass
 
-    # Channel 2 & 3: Win32 message & EnumWindows with AttachThreadInput
+    # Channel 2 & 3: Win32 message & EnumWindows fallback
     if is_windows():
         try:
             import ctypes
@@ -91,8 +97,8 @@ def activate_existing_window() -> bool:
                     finally:
                         kernel32.CloseHandle(h_proc)
 
-                    # Strictly exclude web browsers, code editors and developer tools
-                    if any(b in exe_name for b in ("chrome", "msedge", "firefox", "opera", "brave", "yandex", "code", "devenv")):
+                    # Strictly exclude web browsers, code editors, file explorer and developer tools
+                    if any(b in exe_name for b in ("chrome", "msedge", "firefox", "opera", "brave", "yandex", "code", "devenv", "explorer")):
                         return False
 
                     # Must be BobrDobr client executable (or python in development environment)
@@ -123,24 +129,22 @@ def activate_existing_window() -> bool:
                 except Exception:
                     return False
 
+            activated = False
             def enum_cb(h, _):
                 nonlocal activated
                 if is_bobrdobr_window(h):
+                    target_pid = wintypes.DWORD()
+                    user32.GetWindowThreadProcessId(h, ctypes.byref(target_pid))
+                    if target_pid.value:
+                        user32.AllowSetForegroundWindow(target_pid.value)
+
                     user32.PostMessageW(h, WM_BOBRDOBR_ACTIVATE, 0, 0)
-
-                    fore_hwnd = user32.GetForegroundWindow()
-                    fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
-                    cur_thread = kernel32.GetCurrentThreadId()
-
                     user32.ShowWindow(h, 9)  # SW_RESTORE
                     user32.BringWindowToTop(h)
-
-                    if fore_thread != cur_thread:
-                        user32.AttachThreadInput(cur_thread, fore_thread, True)
-                        user32.SetForegroundWindow(h)
-                        user32.AttachThreadInput(cur_thread, fore_thread, False)
-                    else:
-                        user32.SetForegroundWindow(h)
+                    # Use Alt-key trick to cleanly bypass Windows foreground lock without attaching to other threads
+                    user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+                    user32.SetForegroundWindow(h)
+                    user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up
 
                     activated = True
                     return False
@@ -148,10 +152,11 @@ def activate_existing_window() -> bool:
 
             WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
             user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+            return activated
         except Exception:
             pass
 
-    return activated
+    return False
 
 
 def show_already_running_message() -> None:

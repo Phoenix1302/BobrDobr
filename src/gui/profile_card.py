@@ -5,12 +5,12 @@ from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QWidget,
     QGraphicsDropShadowEffect, QSizePolicy, QMessageBox
 )
-from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import Qt, Signal, QUrl
 from core.vpn_manager import VPNState
 from gui.styles import get_amnezia_pixmap, get_openconnect_pixmap, get_subscription_pixmap
 from utils.config_store import settings
-from utils.subscription_manager import format_subscription_profile_name
+from utils.subscription_manager import format_subscription_profile_name, SubscriptionManager
 
 
 CONNECT_BTN_STYLE = """
@@ -621,28 +621,7 @@ class VPNProfileCard(QFrame):
         elif self.current_state in (VPNState.DISCONNECTED, VPNState.ERROR):
             is_frozen, reason = self.get_frozen_status()
             if is_frozen:
-                username = settings.get("subscription_username") or self.profile.get("username") or "пользователя"
-                if reason == "blocked":
-                    QMessageBox.warning(
-                        self,
-                        "Доступ заблокирован",
-                        f"Пользователь подписки «{username}» заблокирован администратором.\n\n"
-                        "Подключение к этой плотине недоступно. Для восстановления доступа обратитесь к администратору BobrDobr VPN."
-                    )
-                elif reason == "expired":
-                    QMessageBox.warning(
-                        self,
-                        "Срок подписки истёк",
-                        f"Срок действия подписки пользователя «{username}» истёк.\n\n"
-                        "Для восстановления доступа продлите подписку в личном кабинете BobrDobr VPN, затем обновите её."
-                    )
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Подписка заморожена",
-                        f"Действие подписки пользователя «{username}» приостановлено.\n\n"
-                        "Для разморозки обратитесь к администратору или проверьте состояние в личном кабинете."
-                    )
+                self._show_frozen_warning(reason)
                 return
 
             # Мгновенная визуальная реакция на клик подключения (0 мс)
@@ -654,6 +633,74 @@ class VPNProfileCard(QFrame):
             )
             QApplication.processEvents()
             self.connect_requested.emit(self.profile_id)
+
+    def _show_frozen_warning(self, reason: str):
+        """Отображает диалог с предупреждением о заморозке подписки и предложением перейти в Личный Кабинет."""
+        cabinet_url = SubscriptionManager.get_cabinet_url()
+        username = settings.get("subscription_username") or self.profile.get("username") or "пользователя"
+
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Warning)
+
+        if reason == "blocked":
+            msg_box.setWindowTitle("Доступ заблокирован")
+            msg_box.setText(
+                f"Пользователь подписки «{username}» заблокирован администратором.\n\n"
+                "Подключение к этой плотине недоступно. Для восстановления доступа перейдите в личный кабинет или обратитесь к администратору BobrDobr VPN."
+            )
+        elif reason == "expired":
+            msg_box.setWindowTitle("Срок подписки истёк")
+            msg_box.setText(
+                f"Срок действия подписки пользователя «{username}» истёк.\n\n"
+                "Для восстановления доступа продлите подписку в личном кабинете BobrDobr VPN, затем обновите её."
+            )
+        else:
+            msg_box.setWindowTitle("Подписка заморожена")
+            msg_box.setText(
+                f"Действие подписки пользователя «{username}» приостановлено.\n\n"
+                "Для разморозки обратитесь к администратору или проверьте состояние в личном кабинете."
+            )
+
+        btn_open = None
+        if cabinet_url:
+            btn_open = msg_box.addButton("Перейти в личный кабинет ↗", QMessageBox.AcceptRole)
+            btn_open.setCursor(Qt.PointingHandCursor)
+            btn_open.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0284c7, stop:1 #0369a1);
+                    color: #ffffff;
+                    border: 1px solid rgba(255, 255, 255, 0.20);
+                    border-radius: 6px;
+                    padding: 6px 16px;
+                    font-weight: 700;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0ea5e9, stop:1 #0284c7);
+                }
+            """)
+
+        btn_close = msg_box.addButton("Закрыть", QMessageBox.RejectRole)
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #1a252a;
+                color: #cbd5e1;
+                border: 1px solid #334852;
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #24343b;
+            }
+        """)
+        msg_box.setDefaultButton(btn_open if btn_open else btn_close)
+        msg_box.exec()
+
+        if btn_open and msg_box.clickedButton() == btn_open:
+            QDesktopServices.openUrl(QUrl(cabinet_url))
 
     def update_state(self, state: VPNState, custom_status: Optional[str] = None, custom_btn: Optional[str] = None):
         self.current_state = state

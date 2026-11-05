@@ -99,8 +99,8 @@ class VPNLauncherBase(QObject):
     @abstractmethod
     def start_connection(self, **kwargs: Any) -> bool:
         """Start the VPN connection with protocol-specific parameters."""
-        if self.is_running() or self.state == VPNState.DISCONNECTING:
-            self.log("Previous process is still terminating or active. Waiting for clean shutdown...", "sys")
+        if self.is_running() and not self._stop_requested.is_set():
+            self.log("Previous process is still active. Waiting for clean shutdown...", "sys")
             self.stop_connection(wait=True)
         return False
 
@@ -141,22 +141,29 @@ class VPNLauncherBase(QObject):
                             except Exception:
                                 pass
 
-                    # 2. Give process up to 3.5 seconds to send BYE packet and run vpnc-script disconnect / Wintun teardown
+                    # 2. Give process up to 6.0 seconds for graceful teardown (routes flush, WFP filters, Wintun unbind)
                     try:
-                        proc_to_kill.wait(timeout=3.5)
+                        proc_to_kill.wait(timeout=6.0)
                         self.log("Process terminated cleanly.", "sys")
                     except subprocess.TimeoutExpired:
-                        self.log("Process did not exit within timeout, forcing termination...", "sys")
-                        try:
-                            proc_to_kill.terminate()
-                            proc_to_kill.wait(timeout=1.0)
-                        except Exception:
-                            pass
-                        run_silent_cmd(["taskkill", "/F", "/T", "/PID", str(pid)], timeout=2)
-                        try:
-                            proc_to_kill.wait(timeout=1.0)
-                        except Exception:
-                            pass
+                        if proc_to_kill.poll() is None:
+                            self.log("Process did not exit within 6.0s timeout, attempting terminate...", "sys")
+                            try:
+                                proc_to_kill.terminate()
+                                proc_to_kill.wait(timeout=1.5)
+                            except (subprocess.TimeoutExpired, Exception):
+                                pass
+
+                        # Force termination via taskkill ONLY as a last resort if process really hung
+                        if proc_to_kill.poll() is None:
+                            self.log("Process is unresponsive, forcing termination with taskkill...", "sys")
+                            run_silent_cmd(["taskkill", "/F", "/T", "/PID", str(pid)], timeout=3)
+                            try:
+                                proc_to_kill.wait(timeout=1.0)
+                            except Exception:
+                                pass
+                        else:
+                            self.log("Process terminated cleanly after terminate signal.", "sys")
                     except OSError:
                         # Process already terminated and handle invalidated
                         pass
@@ -204,8 +211,8 @@ class VPNLauncherBase(QObject):
         stdin_data: Optional[str] = None
     ) -> bool:
         """Spawns binary in an isolated subprocess with realtime stdout/stderr streaming."""
-        if self.is_running() or self.state == VPNState.DISCONNECTING:
-            self.log("Previous process is still terminating or active. Waiting for clean shutdown...", "sys")
+        if self.is_running() and not self._stop_requested.is_set():
+            self.log("Previous process is still active. Waiting for clean shutdown...", "sys")
             self.stop_connection(wait=True)
 
         if self.is_running():
@@ -265,9 +272,10 @@ class VPNLauncherBase(QObject):
                     self.log(f"Failed to pass data to stdin: {e}", "sys")
 
             # Start background reader threads for stdout and stderr
-            t_out = threading.Thread(target=self._stream_reader, args=(self._process.stdout, "stdout"), daemon=True)
-            t_err = threading.Thread(target=self._stream_reader, args=(self._process.stderr, "stderr"), daemon=True)
-            t_wait = threading.Thread(target=self._monitor_exit, args=(self._process,), daemon=True)
+            curr_run_id = self._session_run_id
+            t_out = threading.Thread(target=self._stream_reader, args=(self._process.stdout, "stdout", curr_run_id), daemon=True)
+            t_err = threading.Thread(target=self._stream_reader, args=(self._process.stderr, "stderr", curr_run_id), daemon=True)
+            t_wait = threading.Thread(target=self._monitor_exit, args=(self._process, curr_run_id), daemon=True)
 
             self._reader_threads = [t_out, t_err, t_wait]
             t_out.start()
@@ -295,7 +303,7 @@ class VPNLauncherBase(QObject):
             self.set_state(VPNState.ERROR)
             return False
 
-    def _stream_reader(self, pipe, channel_name: str) -> None:
+    def _stream_reader(self, pipe, channel_name: str, run_id: Optional[int] = None) -> None:
         """Reads stream line-by-line and triggers parse_log_line."""
         if not pipe:
             return
@@ -306,7 +314,8 @@ class VPNLauncherBase(QObject):
                 stripped = line.rstrip()
                 if stripped:
                     self.log_received.emit(stripped, channel_name)
-                    self._parse_log_line(stripped, channel_name)
+                    if run_id is None or self._session_run_id == run_id:
+                        self._parse_log_line(stripped, channel_name)
         except Exception as e:
             if not self._stop_requested.is_set():
                 self.log(f"Reader exception on {channel_name}: {e}", "sys")
@@ -316,9 +325,12 @@ class VPNLauncherBase(QObject):
             except Exception:
                 pass
 
-    def _monitor_exit(self, proc: subprocess.Popen) -> None:
+    def _monitor_exit(self, proc: subprocess.Popen, run_id: Optional[int] = None) -> None:
         """Monitors process exit code."""
         ret = proc.wait()
+        if run_id is not None and self._session_run_id != run_id:
+            return
+
         if self._stop_requested.is_set():
             if self._process is proc:
                 self.set_state(VPNState.DISCONNECTED)

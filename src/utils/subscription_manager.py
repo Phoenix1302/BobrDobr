@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple, Any, Optional
 
 import urllib.request
 import urllib.error
+import urllib.parse
 
 from utils.conf_parser import parse_amnezia_config_text
 
@@ -66,6 +67,56 @@ def format_subscription_profile_name(name: str) -> str:
     if not base_name:
         return "vpn-sub"
     return f"{base_name}-sub"
+
+
+def get_cabinet_url(url: str = "") -> str:
+    """
+    Извлекает корневой домен сайта подписки для перехода в Личный Кабинет.
+    - Принимает ссылку на подписку (если пустая — читает сохраненную ссылку из settings или кэша).
+    - Использует urllib.parse.urlsplit.
+    - Корректно извлекает схему и домен: https://persona.netphoenix.ru/api/v1/sub/TOKEN -> https://persona.netphoenix.ru
+    - Если в кэше данных подписки есть поле cabinet_url или dashboard_url, возвращает его с приоритетом.
+    - Если ссылка не задана или некорректна, возвращает пустую строку.
+    """
+    raw_url = (url or "").strip()
+
+    # Если URL не передан явно, проверяем кэш и сохранённые настройки
+    if not raw_url:
+        try:
+            from utils.config_store import settings
+            cache = settings.get("subscription_cache") or {}
+            if isinstance(cache, dict):
+                cache_url = cache.get("cabinet_url") or cache.get("dashboard_url")
+                if not cache_url and isinstance(cache.get("server"), dict):
+                    cache_url = cache["server"].get("cabinet_url") or cache["server"].get("dashboard_url")
+                if cache_url and str(cache_url).strip():
+                    return str(cache_url).strip().rstrip("/")
+
+            saved_cabinet = (settings.get("subscription_cabinet_url") or "").strip()
+            if saved_cabinet:
+                return saved_cabinet.rstrip("/")
+
+            raw_url = (settings.get("subscription_url") or "").strip()
+        except Exception:
+            pass
+
+    if not raw_url:
+        return ""
+
+    # Если переданный URL не содержит схемы, добавляем https://
+    candidate = raw_url
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', candidate):
+        candidate = f"https://{candidate}"
+
+    try:
+        parsed = urllib.parse.urlsplit(candidate)
+        if not parsed.hostname or " " in parsed.netloc or not re.match(r'^[a-zA-Z0-9.-]+$', parsed.hostname):
+            return ""
+
+        scheme = parsed.scheme.lower() or "https"
+        return f"{scheme}://{parsed.netloc}".rstrip("/")
+    except Exception:
+        return ""
 
 
 def fetch_subscription(url: str, timeout: int = 15) -> Dict[str, Any]:
@@ -137,6 +188,26 @@ def fetch_subscription(url: str, timeout: int = 15) -> Dict[str, Any]:
                             data["_expire_timestamp"] = exp_ts
                         except Exception:
                             pass
+
+                # Сохранение URL личного кабинета из ответа сервера или извлечение из ссылки подписки
+                cabinet_url = ""
+                if isinstance(data, dict):
+                    cabinet_url = str(data.get("cabinet_url") or data.get("dashboard_url") or "").strip()
+                    if not cabinet_url and isinstance(data.get("server"), dict):
+                        cabinet_url = str(data["server"].get("cabinet_url") or data["server"].get("dashboard_url") or "").strip()
+
+                if not cabinet_url:
+                    cabinet_url = get_cabinet_url(target_url)
+
+                if cabinet_url:
+                    if "cabinet_url" not in data:
+                        data["cabinet_url"] = cabinet_url
+                    try:
+                        from utils.config_store import settings
+                        settings.data["subscription_cabinet_url"] = cabinet_url
+                        settings.save()
+                    except Exception:
+                        pass
 
                 return data
 
@@ -407,6 +478,14 @@ def sync_subscription(url: str = "") -> Tuple[bool, str, List[Dict[str, Any]]]:
         settings.data["subscription_server_host"] = str(server_info.get("host", ""))
         settings.data["subscription_app_version"] = str(server_info.get("app_version", ""))
 
+    cabinet_url = data.get("cabinet_url") or data.get("dashboard_url")
+    if not cabinet_url and isinstance(server_info, dict):
+        cabinet_url = server_info.get("cabinet_url") or server_info.get("dashboard_url")
+    if not cabinet_url:
+        cabinet_url = get_cabinet_url(target_url)
+    if cabinet_url:
+        settings.data["subscription_cabinet_url"] = str(cabinet_url).strip().rstrip("/")
+
     settings.data["subscription_last_sync"] = datetime.now().isoformat()
     settings.save()
 
@@ -446,6 +525,10 @@ def get_subscription_info() -> Dict[str, Any]:
     if not expires_at and isinstance(cache.get("user"), dict):
         expires_at = str(cache["user"].get("expires_at", ""))
 
+    cabinet_url = settings.get("subscription_cabinet_url", "")
+    if not cabinet_url:
+        cabinet_url = get_cabinet_url(url)
+
     days_left: Optional[int] = None
     is_expiring_soon = False
     is_expired = (status == "expired")
@@ -473,6 +556,7 @@ def get_subscription_info() -> Dict[str, Any]:
 
     return {
         "url": url,
+        "cabinet_url": cabinet_url,
         "status": status,
         "username": username,
         "role": settings.get("subscription_role", "user"),
@@ -508,6 +592,7 @@ def clear_subscription() -> bool:
         keys_to_clear = [
             "subscription_url",
             "subscription_cache",
+            "subscription_cabinet_url",
             "subscription_status",
             "subscription_username",
             "subscription_role",
@@ -548,6 +633,10 @@ class SubscriptionManager:
     @staticmethod
     def get_info() -> Dict[str, Any]:
         return get_subscription_info()
+
+    @staticmethod
+    def get_cabinet_url(url: str = "") -> str:
+        return get_cabinet_url(url)
 
     @staticmethod
     def clear() -> bool:

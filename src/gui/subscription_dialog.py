@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QLineEdit, QFrame, QScrollArea, QWidget, QMessageBox, QApplication,
     QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon, QColor
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QIcon, QColor, QDesktopServices
 
 from utils.config_store import settings
 from utils.subscription_manager import (
@@ -343,6 +343,36 @@ class SubscriptionManageDialog(QDialog):
 
         buttons_row.addStretch()
 
+        # Кнопка перехода в Личный Кабинет
+        self.btn_cabinet = QPushButton("Личный кабинет ↗")
+        self.btn_cabinet.setObjectName("btn_cabinet")
+        self.btn_cabinet.setCursor(Qt.PointingHandCursor)
+        self.btn_cabinet.setFixedHeight(38)
+        self.btn_cabinet.setMinimumWidth(150)
+        self.btn_cabinet.setStyleSheet("""
+            QPushButton#btn_cabinet {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0284c7, stop:1 #0369a1);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-bottom: 2px solid #075985;
+                border-radius: 8px;
+                padding: 6px 16px;
+                font-weight: 700;
+                font-size: 12px;
+            }
+            QPushButton#btn_cabinet:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0ea5e9, stop:1 #0284c7);
+                border-color: rgba(255, 255, 255, 0.28);
+            }
+            QPushButton#btn_cabinet:disabled {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: #64748b;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+            }
+        """)
+        self.btn_cabinet.clicked.connect(self._on_open_cabinet_clicked)
+        buttons_row.addWidget(self.btn_cabinet)
+
         # Кнопка ручной синхронизации (Primary/Purple)
         self.btn_sync = QPushButton("🔄 Обновить подписку")
         self.btn_sync.setCursor(Qt.PointingHandCursor)
@@ -402,8 +432,17 @@ class SubscriptionManageDialog(QDialog):
         """Перечитывает данные подписки и профилей из ConfigStore и перерисовывает интерфейс."""
         info = SubscriptionManager.get_info()
         self._full_url = info.get("url", "")
+        self._cabinet_url = info.get("cabinet_url") or SubscriptionManager.get_cabinet_url(self._full_url)
         self.input_url.setText(mask_subscription_url(self._full_url))
         self.input_url.setToolTip(self._full_url if self._full_url else "Ссылка отсутствует")
+
+        if hasattr(self, "btn_cabinet"):
+            if self._cabinet_url:
+                self.btn_cabinet.setEnabled(True)
+                self.btn_cabinet.setToolTip(f"Перейти в личный кабинет:\n{self._cabinet_url}")
+            else:
+                self.btn_cabinet.setEnabled(False)
+                self.btn_cabinet.setToolTip("Личный кабинет недоступен (URL не определен)")
 
         # 1. Дата окончания и расчёт оставшихся дней
         expires_at = info.get("expires_at", "")
@@ -599,6 +638,14 @@ class SubscriptionManageDialog(QDialog):
         layout.addWidget(lbl_gw)
 
         return card
+
+    def _on_open_cabinet_clicked(self):
+        """Открывает веб-страницу Личного Кабинета в браузере."""
+        cabinet_url = getattr(self, "_cabinet_url", "") or SubscriptionManager.get_cabinet_url(self._full_url)
+        if cabinet_url:
+            QDesktopServices.openUrl(QUrl(cabinet_url))
+        else:
+            QMessageBox.information(self, "Личный кабинет", "Ссылка на личный кабинет не определена.")
 
     def _on_copy_url_clicked(self):
         """Копирует полную ссылку подписки в системный буфер обмена."""

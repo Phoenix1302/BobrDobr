@@ -23,7 +23,7 @@ from gui.styles import resolve_subscription_icon_path
 
 class TestSubscriptionUI(unittest.TestCase):
     def test_version_bump(self):
-        self.assertEqual(APP_VERSION, "1.1.0")
+        self.assertEqual(APP_VERSION, "1.1.2")
 
     def test_subscription_icon_resolution(self):
         path = resolve_subscription_icon_path()

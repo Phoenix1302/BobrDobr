@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon, QMenu, QAbstractButton, QRadioButton, QCheckBox,
     QGraphicsDropShadowEffect, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QObject, QEvent, QThread, Signal
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette, QColor
+from PySide6.QtCore import Qt, QTimer, QSize, QObject, QEvent, QThread, Signal, QUrl
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QPalette, QColor, QDesktopServices
 from PySide6.QtSvg import QSvgRenderer
 
 from core.vpn_manager import VPNState
@@ -61,6 +61,25 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
+
+        # IPC сервер и Windows сообщение для активации окна при повторном запуске
+        self._wm_activate_msg = 0
+        if is_windows():
+            try:
+                import ctypes
+                self._wm_activate_msg = ctypes.windll.user32.RegisterWindowMessageW("BobrDobr_VPN_Activate_Window_Msg")
+            except Exception:
+                pass
+
+        try:
+            from PySide6.QtNetwork import QLocalServer
+            self._ipc_server = QLocalServer(self)
+            self._ipc_server.setSocketOptions(QLocalServer.SocketOption.WorldAccessOption)
+            self._ipc_server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
+            self._ipc_server.newConnection.connect(self._on_single_instance_ipc_connection)
+            self._ipc_server.listen("BobrDobr_VPN_SingleInstance_IPC")
+        except Exception:
+            self._ipc_server = None
 
         # Привязываем процесс к Windows Job Object (гарантия автозавершения amneziawg-go при выходе)
         if is_windows():
@@ -125,22 +144,6 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._wire_signals()
         self._render_profiles()
-
-        # IPC сервер и Windows сообщение для активации окна при повторном запуске
-        if is_windows():
-            try:
-                import ctypes
-                self._wm_activate_msg = ctypes.windll.user32.RegisterWindowMessageW("BobrDobr_VPN_Activate_Window_Msg")
-            except Exception:
-                self._wm_activate_msg = 0
-        else:
-            self._wm_activate_msg = 0
-
-        from PySide6.QtNetwork import QLocalServer
-        self._ipc_server = QLocalServer(self)
-        self._ipc_server.removeServer("BobrDobr_VPN_SingleInstance_IPC")
-        self._ipc_server.newConnection.connect(self._on_single_instance_ipc_connection)
-        self._ipc_server.listen("BobrDobr_VPN_SingleInstance_IPC")
 
     def _resolve_icon_path(self) -> str:
         candidates = [
@@ -256,26 +259,20 @@ class MainWindow(QMainWindow):
     def restore_and_bring_to_front(self):
         """Восстанавливает главное окно из трея/свернутого состояния и выводит на передний план."""
         self.showNormal()
-        self.activateWindow()
+        self.setWindowState((self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
         self.raise_()
+        self.activateWindow()
         if is_windows():
             try:
                 import ctypes
                 user32 = ctypes.windll.user32
-                kernel32 = ctypes.windll.kernel32
                 hwnd = int(self.winId())
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                 user32.BringWindowToTop(hwnd)
-
-                fore_hwnd = user32.GetForegroundWindow()
-                fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
-                cur_thread = kernel32.GetCurrentThreadId()
-                if fore_thread != cur_thread:
-                    user32.AttachThreadInput(cur_thread, fore_thread, True)
-                    user32.SetForegroundWindow(hwnd)
-                    user32.AttachThreadInput(cur_thread, fore_thread, False)
-                else:
-                    user32.SetForegroundWindow(hwnd)
+                # Alt-key trick bypasses Windows focus-stealing prevention safely without attaching to other threads
+                user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+                user32.SetForegroundWindow(hwnd)
+                user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up
             except Exception:
                 pass
 
@@ -576,6 +573,14 @@ class MainWindow(QMainWindow):
         self.lbl_banner_text.setStyleSheet("font-size: 12px; line-height: 1.4; background: transparent; border: none;")
         banner_layout.addWidget(self.lbl_banner_text, stretch=1)
 
+        self.btn_banner_cabinet = QPushButton("Продлить в личном кабинете ↗")
+        self.btn_banner_cabinet.setObjectName("btn_banner_cabinet")
+        self.btn_banner_cabinet.setCursor(Qt.PointingHandCursor)
+        self.btn_banner_cabinet.setFixedHeight(28)
+        self.btn_banner_cabinet.clicked.connect(self._on_open_cabinet_clicked)
+        self.btn_banner_cabinet.setVisible(False)
+        banner_layout.addWidget(self.btn_banner_cabinet)
+
         self.btn_banner_action = QPushButton("✨ Подписка")
         self.btn_banner_action.setObjectName("btn_banner_action")
         self.btn_banner_action.setCursor(Qt.PointingHandCursor)
@@ -661,6 +666,36 @@ class MainWindow(QMainWindow):
         self.btn_subscription.clicked.connect(self._on_manage_subscription_clicked)
         self.btn_subscription.setVisible(False)
         action_bar.addWidget(self.btn_subscription)
+
+        # Кнопка перехода в личный кабинет (отображается при наличии ссылки или подписных профилей)
+        self.btn_cabinet = QPushButton("🌐 Личный кабинет ↗")
+        self.btn_cabinet.setObjectName("btn_cabinet_header")
+        self.btn_cabinet.setCursor(Qt.PointingHandCursor)
+        self.btn_cabinet.setStyleSheet("""
+            QPushButton#btn_cabinet_header {
+                background-color: rgba(2, 132, 199, 0.14);
+                color: #38bdf8;
+                border: 1px solid rgba(2, 132, 199, 0.45);
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 700;
+                padding: 7px 16px;
+            }
+            QPushButton#btn_cabinet_header:hover {
+                background-color: rgba(2, 132, 199, 0.28);
+                border-color: #38bdf8;
+                color: #ffffff;
+            }
+            QPushButton#btn_cabinet_header:pressed {
+                background-color: rgba(3, 105, 161, 0.45);
+                border-color: #0284c7;
+                color: #ffffff;
+            }
+        """)
+        self.btn_cabinet.setToolTip("Перейти в личный кабинет пользователя в браузере")
+        self.btn_cabinet.clicked.connect(self._on_open_cabinet_clicked)
+        self.btn_cabinet.setVisible(False)
+        action_bar.addWidget(self.btn_cabinet)
 
         # Кнопка добавления подключения
         btn_add = QPushButton("+ Создать подключение")
@@ -884,6 +919,8 @@ class MainWindow(QMainWindow):
         # Если подписка не подключена и нет подписных профилей — баннер не нужен
         if not url and profiles_count == 0:
             self.announcement_banner.setVisible(False)
+            if hasattr(self, "btn_banner_cabinet"):
+                self.btn_banner_cabinet.setVisible(False)
             return
 
         status = str(sub_info.get("status", "")).strip().lower()
@@ -892,6 +929,7 @@ class MainWindow(QMainWindow):
         days_left = sub_info.get("days_left")
         is_expired = sub_info.get("is_expired", False)
         is_expiring_soon = sub_info.get("is_expiring_soon", False)
+        cabinet_url = sub_info.get("cabinet_url") or SubscriptionManager.get_cabinet_url(url)
 
         exp_display = "не указан"
         if expires_at:
@@ -908,6 +946,26 @@ class MainWindow(QMainWindow):
                 f"<span style='color: #fecaca;'>Пользователь подписки «<b>{username}</b>» заблокирован администратором. "
                 f"Обратитесь к администратору для разблокировки.</span>"
             )
+            if hasattr(self, "btn_banner_cabinet"):
+                if cabinet_url:
+                    self.btn_banner_cabinet.setText("Открыть личный кабинет ↗")
+                    self.btn_banner_cabinet.setStyleSheet("""
+                        QPushButton#btn_banner_cabinet {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0284c7, stop:1 #0369a1);
+                            color: #ffffff;
+                            border: 1px solid rgba(255, 255, 255, 0.20);
+                            border-radius: 6px;
+                            padding: 4px 12px;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        QPushButton#btn_banner_cabinet:hover {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0ea5e9, stop:1 #0284c7);
+                        }
+                    """)
+                    self.btn_banner_cabinet.setVisible(True)
+                else:
+                    self.btn_banner_cabinet.setVisible(False)
             self.btn_banner_action.setText("✨ Подробнее")
             self.btn_banner_action.setStyleSheet("""
                 QPushButton#btn_banner_action {
@@ -941,7 +999,27 @@ class MainWindow(QMainWindow):
                 f"<span style='color: #fed7aa;'>Срок действия подписки пользователя «<b>{username}</b>» истёк ({exp_display}). "
                 f"Необходимо продлить доступ в личном кабинете.</span>"
             )
-            self.btn_banner_action.setText("✨ Продлить")
+            if hasattr(self, "btn_banner_cabinet"):
+                if cabinet_url:
+                    self.btn_banner_cabinet.setText("Продлить в личном кабинете ↗")
+                    self.btn_banner_cabinet.setStyleSheet("""
+                        QPushButton#btn_banner_cabinet {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ea580c, stop:1 #c2410c);
+                            color: #ffffff;
+                            border: 1px solid rgba(255, 255, 255, 0.20);
+                            border-radius: 6px;
+                            padding: 4px 12px;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        QPushButton#btn_banner_cabinet:hover {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f97316, stop:1 #ea580c);
+                        }
+                    """)
+                    self.btn_banner_cabinet.setVisible(True)
+                else:
+                    self.btn_banner_cabinet.setVisible(False)
+            self.btn_banner_action.setText("✨ Подробнее")
             self.btn_banner_action.setStyleSheet("""
                 QPushButton#btn_banner_action {
                     background: rgba(234, 88, 12, 0.25);
@@ -975,6 +1053,26 @@ class MainWindow(QMainWindow):
                 f"<span style='color: #fef08a;'>Срок действия подписки «<b>{username}</b>» заканчивается {days_str} ({exp_display}). "
                 f"Продлите доступ в личном кабинете.</span>"
             )
+            if hasattr(self, "btn_banner_cabinet"):
+                if cabinet_url:
+                    self.btn_banner_cabinet.setText("Продлить в личном кабинете ↗")
+                    self.btn_banner_cabinet.setStyleSheet("""
+                        QPushButton#btn_banner_cabinet {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d97706, stop:1 #b45309);
+                            color: #ffffff;
+                            border: 1px solid rgba(255, 255, 255, 0.20);
+                            border-radius: 6px;
+                            padding: 4px 12px;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        QPushButton#btn_banner_cabinet:hover {
+                            background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f59e0b, stop:1 #d97706);
+                        }
+                    """)
+                    self.btn_banner_cabinet.setVisible(True)
+                else:
+                    self.btn_banner_cabinet.setVisible(False)
             self.btn_banner_action.setText("✨ Подробнее")
             self.btn_banner_action.setStyleSheet("""
                 QPushButton#btn_banner_action {
@@ -1003,17 +1101,39 @@ class MainWindow(QMainWindow):
 
         else:
             self.announcement_banner.setVisible(False)
+            if hasattr(self, "btn_banner_cabinet"):
+                self.btn_banner_cabinet.setVisible(False)
 
     def _update_subscription_ui(self):
-        """Показывает кнопку меню подписки и обновляет информационный баннер."""
+        """Показывает кнопки подписки и личного кабинета, обновляет информационный баннер."""
         sub_url = (settings.get("subscription_url") or "").strip()
         has_sub_profiles = any(
             p.get("is_subscription") or p.get("sub_id") is not None
             for p in settings.get_profiles()
         )
+        has_sub = bool(sub_url or has_sub_profiles)
         if hasattr(self, "btn_subscription"):
-            self.btn_subscription.setVisible(bool(sub_url or has_sub_profiles))
+            self.btn_subscription.setVisible(has_sub)
+
+        cabinet_url = SubscriptionManager.get_cabinet_url()
+        if hasattr(self, "btn_cabinet"):
+            self.btn_cabinet.setVisible(bool(cabinet_url and has_sub))
+            if cabinet_url:
+                self.btn_cabinet.setToolTip(f"Перейти в личный кабинет пользователя в браузере:\n{cabinet_url}")
+
         self._update_subscription_banner()
+
+    def _on_open_cabinet_clicked(self):
+        """Открывает веб-страницу Личного Кабинета в браузере."""
+        cabinet_url = SubscriptionManager.get_cabinet_url()
+        if cabinet_url:
+            QDesktopServices.openUrl(QUrl(cabinet_url))
+        else:
+            QMessageBox.information(
+                self,
+                "Личный кабинет",
+                "Ссылка на личный кабинет не определена. Настройте подписку."
+            )
 
     def _on_manage_subscription_clicked(self):
         """Открывает расширенный диалог управления подпиской BobrDobr."""
@@ -1171,30 +1291,38 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(40, lambda: self._start_profile_tunnel(profile_id))
 
     def _execute_hot_switch(self, old_id: str, new_id: str):
-        # 1. Синхронно и чисто останавливаем старый туннель
-        self._on_disconnect_profile(old_id, wait=True)
+        # 1. Мягко останавливаем старый туннель в неблокирующем режиме (wait=False)
+        self._on_disconnect_profile(old_id, wait=False)
+        old_profile = settings.get_profile(old_id) or {}
+        old_proto = old_profile.get("proto", "amnezia")
+        old_launcher = self.amnezia_launcher if old_proto == "amnezia" else self.openconnect_launcher
+        old_launcher.stop_connection(wait=False)
+
         if old_id in self.cards:
             self.cards[old_id].update_state(VPNState.DISCONNECTED)
         self.active_profile_id = None
         QApplication.processEvents()
 
-        # 2. Гарантированно глушим любые активные демоны перед стартом
-        if self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING:
-            self.amnezia_launcher.stop_connection(wait=True)
-        if self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING:
-            self.openconnect_launcher.stop_connection(wait=True)
-
-        QApplication.processEvents()
-
-        # 3. Стартуем новый профиль
+        # 2. Стартуем новый профиль.
+        # Благодаря ротации адаптеров AmneziaWG (awg0 -> awg1 -> awg0)
+        # новый туннель получит следующий чистый интерфейс и поднимется параллельно,
+        # не дожидаясь полного PnP-демонтажа старого устройства Windows.
+        # При переключении между AmneziaWG и OpenConnect они используют разные сетевые модули,
+        # поэтому переключение также абсолютно бесшовное.
         self._start_profile_tunnel(new_id)
 
     def _start_profile_tunnel(self, profile_id: str):
-        # Гарантированная защита: глушим любые остаточные процессы туннелей перед запуском
-        if self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING:
-            self.amnezia_launcher.stop_connection(wait=True)
-        if self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING:
-            self.openconnect_launcher.stop_connection(wait=True)
+        profile = settings.get_profile(profile_id)
+        if not profile:
+            return
+
+        proto = profile.get("proto", "amnezia")
+
+        # При переключении протоколов: если запускаем AmneziaWG, а запущен OpenConnect — мягко останавливаем его, и наоборот
+        if proto == "amnezia" and (self.openconnect_launcher.is_running() or self.openconnect_launcher.state == VPNState.DISCONNECTING):
+            self.openconnect_launcher.stop_connection(wait=False)
+        elif proto != "amnezia" and (self.amnezia_launcher.is_running() or self.amnezia_launcher.state == VPNState.DISCONNECTING):
+            self.amnezia_launcher.stop_connection(wait=False)
 
         profile = settings.get_profile(profile_id)
         if not profile:
