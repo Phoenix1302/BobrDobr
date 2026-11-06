@@ -46,8 +46,10 @@
 
 - **Win32 Error 740 (`ERROR_ELEVATION_REQUIRED`) в инсталляторе:**
   - В скрипт Inno Setup добавлен флаг `runascurrentuser` для секции `[Run]`. По завершении установки клиент запускается в контексте обычного пользователя без аварийного отказа Windows при деэскалации прав.
-- **Сбой запуска скрипта OpenConnect на Windows (`vpnc-script-win.js`):**
-  - Устранена ошибка Windows Script Host `Неверная функция (код 1)` при инициализации интерфейса AnyConnect. Скрипт корректно настраивает сетевые шлюзы и DNS-серверы.
+- **Сбой маршрутизации OpenConnect на Windows (`vpnc-script-win.js` / Error 12):**
+  - Устранена ошибка синтаксиса `cmd.exe` в скрипте маршрутизации и применен надежный метод перенаправления трафика `REDIRECT_GATEWAY_METHOD = 2` (пара маршрутов `0.0.0.0/1` и `128.0.0.0/1`). Физический интернет-шлюз теперь определяется корректно, весь трафик заворачивается в туннель OpenConnect, а при отключении маршруты аккуратно очищаются.
+- **Очистка захардкоженных параметров AmneziaWG в меню добавления:**
+  - Из формы создания подключения удалены жестко зашитые значения по умолчанию (порт `51820`, адрес `10.8.0.2/32`, DNS, MTU и параметры мусорных пакетов Jc/Jmin/Jmax). Поля теперь пустые с аккуратными плейсхолдерами, а пресеты применяются только по явному выбору пользователя.
 - **Полная тишина при применении маршрутов:**
   - Замена вызовов `ws.Exec` на `ws.Run(cmd, 0, true)` с временной буферизацией вывода. Больше никаких мерцающих черных консольных окон cmd.exe во время подключения и отключения VPN.
 - **Устранение дубликатов в логах:**
@@ -65,8 +67,8 @@
 
 | Файл | Описание | SHA-256 Контрольная сумма |
 | :--- | :--- | :--- |
-| **`BobrDobr-Setup.exe`** | Официальный инсталлятор (Inno Setup 6) | `01BB68AFAEF1469D4AA214D4812D4F23025E027FC5B74755B996C0A75902EE47` |
-| **`BobrDobr.exe`** | Нативный портативный бинарник (Go + WebView2) | `777979048DA8D858E5A1075F8E07187E71CB6D68BEF7DEFEBA367FA54236A64C` |
+| **`BobrDobr-Setup.exe`** | Официальный инсталлятор (Inno Setup 6) | `703540EB0167CC149A961211B87CB0F6221B4C7F44F593D52E48045982E238AD` |
+| **`BobrDobr.exe`** | Нативный портативный бинарник (Go + WebView2) | `8423918ACF71B914906D0C2DA2466067C37541D7C09797FC5A2AD9C2DF6589CD` |
 
 Проверка контрольной суммы в PowerShell:
 ```powershell
@@ -135,8 +137,8 @@ All release assets are cryptographically signed with DigiCert RFC 3161 trusted t
 
 | Asset | Description | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **`BobrDobr-Setup.exe`** | Official Windows Installer (Inno Setup 6) | `01BB68AFAEF1469D4AA214D4812D4F23025E027FC5B74755B996C0A75902EE47` |
-| **`BobrDobr.exe`** | Standalone Native Binary (Go + WebView2) | `777979048DA8D858E5A1075F8E07187E71CB6D68BEF7DEFEBA367FA54236A64C` |
+| **`BobrDobr-Setup.exe`** | Official Windows Installer (Inno Setup 6) | `703540EB0167CC149A961211B87CB0F6221B4C7F44F593D52E48045982E238AD` |
+| **`BobrDobr.exe`** | Standalone Native Binary (Go + WebView2) | `8423918ACF71B914906D0C2DA2466067C37541D7C09797FC5A2AD9C2DF6589CD` |
 
 Verification via PowerShell:
 ```powershell

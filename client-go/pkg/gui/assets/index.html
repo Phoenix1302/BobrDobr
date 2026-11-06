@@ -2268,7 +2268,7 @@
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
-                  <input type="number" class="form-input" id="new-awg-port" value="51820" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-port" placeholder="51820" oninput="onFieldInput('new')">
                 </div>
               </div>
 
@@ -2279,11 +2279,11 @@
                 </div>
                 <div class="form-group">
                   <label class="form-label">DNS-серверы:</label>
-                  <input type="text" class="form-input" id="new-awg-dns" value="1.1.1.1, 8.8.8.8" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-awg-dns" placeholder="1.1.1.1, 8.8.8.8" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">MTU:</label>
-                  <input type="number" class="form-input" id="new-awg-mtu" value="1280" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-mtu" placeholder="1280" oninput="onFieldInput('new')">
                 </div>
               </div>
             </div>
@@ -2297,7 +2297,7 @@
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
-                  <input type="number" class="form-input" id="new-oc-port" value="443" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-oc-port" placeholder="443" oninput="onFieldInput('new')">
                 </div>
               </div>
               <div class="form-grid-2">
@@ -2329,26 +2329,26 @@
             <div class="form-grid-3">
               <div class="form-group">
                 <label class="form-label">Jc <span class="form-label-hint">Мусорные пакеты</span></label>
-                <input type="number" class="form-input" id="new-awg-jc" value="4" oninput="onFieldInput('new')">
+                <input type="number" class="form-input" id="new-awg-jc" placeholder="0" oninput="onFieldInput('new')">
               </div>
               <div class="form-group">
                 <label class="form-label">Jmin <span class="form-label-hint">Мин. длина (Б)</span></label>
-                <input type="number" class="form-input" id="new-awg-jmin" value="40" oninput="onFieldInput('new')">
+                <input type="number" class="form-input" id="new-awg-jmin" placeholder="0" oninput="onFieldInput('new')">
               </div>
               <div class="form-group">
                 <label class="form-label">Jmax <span class="form-label-hint">Макс. длина (Б)</span></label>
-                <input type="number" class="form-input" id="new-awg-jmax" value="70" oninput="onFieldInput('new')">
+                <input type="number" class="form-input" id="new-awg-jmax" placeholder="0" oninput="onFieldInput('new')">
               </div>
             </div>
 
             <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label">S1 <span class="form-label-hint">Инициация junk (Б)</span></label>
-                <input type="number" class="form-input" id="new-awg-s1" value="20" oninput="onFieldInput('new')">
+                <input type="number" class="form-input" id="new-awg-s1" placeholder="0" oninput="onFieldInput('new')">
               </div>
               <div class="form-group">
                 <label class="form-label">S2 <span class="form-label-hint">Ответ junk (Б)</span></label>
-                <input type="number" class="form-input" id="new-awg-s2" value="20" oninput="onFieldInput('new')">
+                <input type="number" class="form-input" id="new-awg-s2" placeholder="0" oninput="onFieldInput('new')">
               </div>
             </div>
 
@@ -2356,15 +2356,15 @@
               <div class="form-group">
                 <label class="form-label">H1, H2 <span class="form-label-hint">Заголовки 1 и 2</span></label>
                 <div style="display:flex; gap:6px;">
-                  <input type="number" class="form-input" id="new-awg-h1" value="1" placeholder="H1" style="flex:1;" oninput="onFieldInput('new')">
-                  <input type="number" class="form-input" id="new-awg-h2" value="2" placeholder="H2" style="flex:1;" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-h1" placeholder="0" style="flex:1;" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-h2" placeholder="0" style="flex:1;" oninput="onFieldInput('new')">
                 </div>
               </div>
               <div class="form-group">
                 <label class="form-label">H3, H4 <span class="form-label-hint">Заголовки 3 и 4</span></label>
                 <div style="display:flex; gap:6px;">
-                  <input type="number" class="form-input" id="new-awg-h3" value="3" placeholder="H3" style="flex:1;" oninput="onFieldInput('new')">
-                  <input type="number" class="form-input" id="new-awg-h4" value="4" placeholder="H4" style="flex:1;" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-h3" placeholder="0" style="flex:1;" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-h4" placeholder="0" style="flex:1;" oninput="onFieldInput('new')">
                 </div>
               </div>
             </div>
@@ -2402,7 +2402,7 @@
                 <span>Разрешённые подсети туннеля (AllowedIPs):</span>
                 <span class="form-label-hint">0.0.0.0/0, ::/0 — весь интернет</span>
               </label>
-              <input type="text" class="form-input" id="new-awg-allowed-ips" value="0.0.0.0/0, ::/0" oninput="onFieldInput('new')">
+              <input type="text" class="form-input" id="new-awg-allowed-ips" placeholder="0.0.0.0/0, ::/0" oninput="onFieldInput('new')">
             </div>
 
             <div class="info-callout" style="border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.08);">
@@ -3376,23 +3376,23 @@
       }
       document.getElementById("new-prof-name").value = "";
       document.getElementById("new-awg-server").value = "";
-      document.getElementById("new-awg-port").value = "51820";
-      document.getElementById("new-awg-address").value = "10.8.0.2/32";
-      document.getElementById("new-awg-dns").value = "1.1.1.1, 8.8.8.8";
-      document.getElementById("new-awg-mtu").value = "1280";
+      document.getElementById("new-awg-port").value = "";
+      document.getElementById("new-awg-address").value = "";
+      document.getElementById("new-awg-dns").value = "";
+      document.getElementById("new-awg-mtu").value = "";
       const newBypassEl = document.getElementById("new-bypass-domains");
       if (newBypassEl) newBypassEl.value = "";
-      document.getElementById("new-awg-allowed-ips").value = "0.0.0.0/0, ::/0";
+      document.getElementById("new-awg-allowed-ips").value = "";
       document.getElementById("new-prof-conf").value = "";
       document.getElementById("new-awg-privkey").value = "";
       document.getElementById("new-awg-pubkey").value = "";
       document.getElementById("new-awg-presharedkey").value = "";
       document.getElementById("new-oc-server").value = "";
-      document.getElementById("new-oc-port").value = "443";
+      document.getElementById("new-oc-port").value = "";
       document.getElementById("new-oc-user").value = "";
       document.getElementById("new-oc-pass").value = "";
       document.getElementById("new-oc-cam").value = "";
-      applyPresetAwg('new', 'standard');
+      applyPresetAwg('new', 'zero');
       updateValidationStatus('new');
     }
 
@@ -3434,7 +3434,7 @@
             address: address,
             dns: dns,
             endpoint: server ? `${server}:${port}` : "",
-            allowed_ips: allowedIps,
+            allowed_ips: allowedIps || "0.0.0.0/0, ::/0",
             jc: parseInt(document.getElementById("new-awg-jc").value, 10) || 0,
             jmin: parseInt(document.getElementById("new-awg-jmin").value, 10) || 0,
             jmax: parseInt(document.getElementById("new-awg-jmax").value, 10) || 0,

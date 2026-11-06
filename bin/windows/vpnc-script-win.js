@@ -34,7 +34,7 @@ var logTimestamps = false;
 // 0 - As interface gateway when setting properties
 // 1 - As a 0.0.0.0/0 route with a lower metric than the default route
 // 2 - As 0.0.0.0/1 + 128.0.0.0/1 routes (override the default route cleanly)
-var REDIRECT_GATEWAY_METHOD = 0;
+var REDIRECT_GATEWAY_METHOD = 2;
 
 // --------------------------------------------------------------
 // Utilities
@@ -71,16 +71,14 @@ function echo(level, msg)
 
 function run_silent(cmd)
 {
-    var fullCmd = comspec + " /C \"" + cmd + "\" > NUL 2>&1";
-    var exitCode = ws.Run(fullCmd, 0, true);
-    accumulatedExitCode += exitCode;
-    return exitCode;
+    var fullCmd = comspec + " /C \"" + cmd + " > NUL 2>&1\"";
+    return ws.Run(fullCmd, 0, true);
 }
 
 function run(cmd)
 {
     var tmpFile = fso.GetSpecialFolder(2) + "\\" + fso.GetTempName();
-    var fullCmd = comspec + " /C \"" + cmd + "\" > \"" + tmpFile + "\" 2>&1";
+    var fullCmd = comspec + " /C \"" + cmd + " > \"" + tmpFile + "\" 2>&1\"";
     echo(DEBUG, "-> " + fullCmd);
     var exitCode = ws.Run(fullCmd, 0, true);
 
@@ -100,7 +98,6 @@ function run(cmd)
     if (exitCode != 0)
         echo(ERROR, "\"" + cmd + "\" returned non-zero exit status: " + exitCode);
     echo((exitCode != 0 ? ERROR : TRACE), "   stdout+stderr dump: " + s);
-    accumulatedExitCode += exitCode;
 
     return s;
 }
@@ -332,6 +329,14 @@ case "disconnect":
         run("netsh interface ipv6 delete route 2000::/3 " + env("TUNIDX"));
     }
     
+    // Delete default routes
+    if (REDIRECT_GATEWAY_METHOD == 2) {
+        run_silent("route delete 0.0.0.0 mask 128.0.0.0");
+        run_silent("route delete 128.0.0.0 mask 128.0.0.0");
+    } else if (REDIRECT_GATEWAY_METHOD == 1) {
+        run_silent("route delete 0.0.0.0 mask 0.0.0.0 " + env("INTERNAL_IP4_ADDRESS"));
+    }
+
     // Delete Legacy IP split-exclude routes
     if (env("CISCO_SPLIT_EXC")) {
         echo(INFO, "Removing Legacy IP split-exclude routes");
@@ -351,4 +356,4 @@ if (env("LOG2FILE")) {
 	log.Close();
 }
 
-WScript.Quit(accumulatedExitCode);
+WScript.Quit(0);
