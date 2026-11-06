@@ -1,0 +1,25 @@
+﻿{
+    "GeneratedAt":  "2026-11-05T20:48:06.0495556+04:00",
+    "RootCA":  {
+                   "Subject":  "CN=BobrDobr Root CA, O=BobrDobr Hydro-engineering Team, C=RU",
+                   "Issuer":  "CN=BobrDobr Root CA, O=BobrDobr Hydro-engineering Team, C=RU",
+                   "Thumbprint":  "8BE32AF4F6E0E7B1431C24522611ECBBB8BA5189",
+                   "SerialNumber":  "1858090A4EFF34B34A71BA5B9705370D",
+                   "NotBefore":  "2026-11-05T20:38:05.0000000+04:00",
+                   "NotAfter":  "2036-11-05T20:48:05.0000000+04:00",
+                   "CerPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-RootCA.cer",
+                   "CrtPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-RootCA.crt",
+                   "PfxPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-RootCA.pfx"
+               },
+    "CodeSign":  {
+                     "Subject":  "CN=BobrDobr Hydro-engineering Team, O=BobrDobr Hydro-engineering Team, C=RU",
+                     "Issuer":  "CN=BobrDobr Root CA, O=BobrDobr Hydro-engineering Team, C=RU",
+                     "Thumbprint":  "1F9FDC89219B37C82FFE0567AFB27BA5B001B4F5",
+                     "SerialNumber":  "1EAC0A81A61AA4A44D369CDBC49393BD",
+                     "NotBefore":  "2026-11-05T20:38:05.0000000+04:00",
+                     "NotAfter":  "2031-11-05T20:48:06.0000000+04:00",
+                     "CerPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-CodeSign.cer",
+                     "CrtPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-CodeSign.crt",
+                     "PfxPath":  "C:\\Users\\Egor\\Documents\\DevTools_Super_Debug\\VPN_Windows_Client\\client-go\\certs\\BobrDobr-CodeSign.pfx"
+                 }
+}

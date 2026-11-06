@@ -11,8 +11,11 @@ ENV/
 
 # PyInstaller / Build artifacts
 dist/
-build/
+/build/
+client-go/bin/*.exe
+client-go/build/**/Output/
 *.manifest
+!client-go/build/windows/manifest/BobrDobr.exe.manifest
 *.old*
 *.bak*
 

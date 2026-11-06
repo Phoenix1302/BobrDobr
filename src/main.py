@@ -1817,7 +1817,7 @@ def main():
             print(f"BobrDobr VPN v{APP_VERSION}\nUsage: BobrDobr-VPN.exe [--version] [--help]")
             sys.exit(0)
 
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("BobrDobrVPN")
     app.setOrganizationName("BobrDobr")
     app.setQuitOnLastWindowClosed(False)

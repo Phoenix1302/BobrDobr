@@ -22,6 +22,7 @@
 
 var accumulatedExitCode = 0;
 var ws = WScript.CreateObject("WScript.Shell");
+var fso = WScript.CreateObject("Scripting.FileSystemObject");
 var env = ws.Environment("Process");
 var comspec = ws.ExpandEnvironmentStrings("%comspec%");
 
@@ -71,20 +72,31 @@ function echo(level, msg)
 function run_silent(cmd)
 {
     var fullCmd = comspec + " /C \"" + cmd + "\" > NUL 2>&1";
-    var oExec = ws.Exec(fullCmd);
-    oExec.StdIn.Close();
+    var exitCode = ws.Run(fullCmd, 0, true);
+    accumulatedExitCode += exitCode;
+    return exitCode;
 }
 
 function run(cmd)
 {
-    var fullCmd = comspec + " /C \"" + cmd + "\" 2>&1";
+    var tmpFile = fso.GetSpecialFolder(2) + "\\" + fso.GetTempName();
+    var fullCmd = comspec + " /C \"" + cmd + "\" > \"" + tmpFile + "\" 2>&1";
     echo(DEBUG, "-> " + fullCmd);
-    var oExec = ws.Exec(fullCmd);
-    oExec.StdIn.Close();
+    var exitCode = ws.Run(fullCmd, 0, true);
 
-    var s = oExec.StdOut.ReadAll();
+    var s = "";
+    try {
+        if (fso.FileExists(tmpFile)) {
+            var f = fso.OpenTextFile(tmpFile, 1);
+            if (!f.AtEndOfStream) {
+                s = f.ReadAll();
+            }
+            f.Close();
+            fso.DeleteFile(tmpFile, true);
+        }
+    } catch (e) {
+    }
 
-    var exitCode = oExec.ExitCode;
     if (exitCode != 0)
         echo(ERROR, "\"" + cmd + "\" returned non-zero exit status: " + exitCode);
     echo((exitCode != 0 ? ERROR : TRACE), "   stdout+stderr dump: " + s);
