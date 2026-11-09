@@ -201,7 +201,7 @@ func main() {
 		log.Printf("[ВНИМАНИЕ] Не удалось автоматически повысить привилегии: продолжение работы")
 	}
 
-	log.Println("[БОБР] Запуск BobrDobr VPN v1.2.0 (Go Native Engine)...")
+	log.Println("[БОБР] Запуск BobrDobr VPN v1.2.1 (Go Native Engine)...")
 
 	// 1. Single Instance Protection & Named Pipe IPC
 	instance := singleinstance.New(singleinstance.DefaultMutexName, singleinstance.DefaultPipeName)
@@ -529,8 +529,9 @@ func main() {
 
 			// Clean existing bypass routes and detect physical gateway before tunnel establishes
 			routeMgr.ClearBypassRoutes()
-			if gw, err := routeMgr.DetectPhysicalGateway(); err == nil {
-				ui.Log(fmt.Sprintf("Физический интернет-шлюз определен: %s", gw), "МАРШРУТЫ")
+			physGw, err := routeMgr.DetectPhysicalGateway()
+			if err == nil {
+				ui.Log(fmt.Sprintf("Физический интернет-шлюз определен: %s", physGw), "МАРШРУТЫ")
 			}
 
 			tunnelMu.Lock()
@@ -567,6 +568,8 @@ func main() {
 					Protocol:         p.OpenConnect.Protocol,
 					CamouflageSecret: camo,
 					Script:           vpncScript,
+					InterfaceName:    currentAdapter,
+					PhysicalGateway:  physGw,
 				}
 				if err := openconnectSup.Start(ctx, cfg); err != nil {
 					ui.Log(fmt.Sprintf("Ошибка запуска OpenConnect: %v", err), "ПРОТЕЧКА")
@@ -627,18 +630,92 @@ func main() {
 			"activeProfileId": settings.ActiveProfileID,
 		})
 
+		expStr := "Бессрочно"
+		if !settings.SubscriptionExpiresAt.IsZero() && settings.SubscriptionExpiresAt.Year() > 1 {
+			expStr = settings.SubscriptionExpiresAt.Format("02.01.2006")
+		}
+
+		username := settings.SubscriptionUsername
+		if username == "" {
+			if settings.SubscriptionURL != "" {
+				username = "Пользователь"
+			} else {
+				username = "Не указан"
+			}
+		}
+
+		server := settings.SubscriptionServer
+		if server == "" {
+			if settings.SubscriptionURL != "" {
+				server = "Подписка"
+			} else {
+				server = "Не указан"
+			}
+		}
+
+		lastSyncStr := "Не проводилась"
+		if !settings.LastSyncTime.IsZero() && settings.LastSyncTime.Year() > 1 {
+			lastSyncStr = settings.LastSyncTime.Format("02.01.2006 15:04")
+		}
+
 		subInfo := map[string]interface{}{
 			"url":        settings.SubscriptionURL,
-			"last_sync":  settings.LastSyncTime.Format("02.01.2006 15:04"),
+			"last_sync":  lastSyncStr,
 			"status":     "active",
-			"expires_at": "Бессрочно",
-			"username":   "Egor",
-			"server":     "persona.netphoenix.ru",
+			"expires_at": expStr,
+			"username":   username,
+			"server":     server,
 		}
 		ui.Emit("subscriptionUpdated", map[string]interface{}{
 			"subscription": subInfo,
 		})
 		ui.Emit("settingsLoaded", settings)
+
+		if settings.SubscriptionURL != "" {
+			go func(subURL string) {
+				defer crash.Recover("Startup silent subscription sync")
+				time.Sleep(1500 * time.Millisecond)
+				subClient := subscription.NewClient(subscription.WithTimeout(15 * time.Second))
+				info, err := subClient.FetchSubscription(context.Background(), subURL)
+				if err != nil {
+					log.Printf("[БОБР] Фоновая синхронизация подписки: %v", err)
+					return
+				}
+
+				for _, p := range info.Profiles {
+					_ = store.SaveProfile(p)
+				}
+				st, _ := store.GetSettings()
+				st.SubscriptionURL = subURL
+				st.SubscriptionToken = info.UserID
+				st.SubscriptionUsername = info.Username
+				st.SubscriptionServer = info.ServerHost
+				st.SubscriptionExpiresAt = info.ExpiresAt
+				st.LastSyncTime = time.Now()
+				_ = store.SaveSettings(st)
+
+				updatedProfiles, _ := store.ListProfiles()
+				ui.Emit("profilesUpdated", map[string]interface{}{
+					"profiles":        updatedProfiles,
+					"activeProfileId": st.ActiveProfileID,
+				})
+
+				silentExp := "Бессрочно"
+				if !info.ExpiresAt.IsZero() && info.ExpiresAt.Year() > 1 {
+					silentExp = info.ExpiresAt.Format("02.01.2006")
+				}
+				ui.Emit("subscriptionUpdated", map[string]interface{}{
+					"subscription": map[string]interface{}{
+						"url":        st.SubscriptionURL,
+						"username":   info.Username,
+						"server":     info.ServerHost,
+						"expires_at": silentExp,
+						"last_sync":  time.Now().Format("15:04:05"),
+					},
+				})
+				ui.Log(fmt.Sprintf("Фоновая синхронизация подписки завершена: профилей %d", len(info.Profiles)), "БОБР")
+			}(settings.SubscriptionURL)
+		}
 
 		if settings.AutoConnect && settings.ActiveProfileID != "" {
 			for _, p := range profiles {
@@ -814,6 +891,9 @@ func main() {
 			settings, _ := store.GetSettings()
 			settings.SubscriptionURL = req.URL
 			settings.SubscriptionToken = info.UserID
+			settings.SubscriptionUsername = info.Username
+			settings.SubscriptionServer = info.ServerHost
+			settings.SubscriptionExpiresAt = info.ExpiresAt
 			settings.LastSyncTime = time.Now()
 			_ = store.SaveSettings(settings)
 
@@ -822,13 +902,17 @@ func main() {
 				"profiles":        profiles,
 				"activeProfileId": settings.ActiveProfileID,
 			})
+			expStr := "Бессрочно"
+			if !info.ExpiresAt.IsZero() && info.ExpiresAt.Year() > 1 {
+				expStr = info.ExpiresAt.Format("02.01.2006")
+			}
 			ui.Emit("subscriptionUpdated", map[string]interface{}{
 				"subscription": map[string]interface{}{
-					"url":         settings.SubscriptionURL,
-					"username":    info.Username,
-					"server":      info.ServerHost,
-					"expires_at":  info.ExpiresAt.Format("02.01.2006"),
-					"last_sync":   time.Now().Format("15:04:05"),
+					"url":        settings.SubscriptionURL,
+					"username":   info.Username,
+					"server":     info.ServerHost,
+					"expires_at": expStr,
+					"last_sync":  time.Now().Format("15:04:05"),
 				},
 			})
 			ui.Log(fmt.Sprintf("Подписка обновлена: загружено %d профилей", len(info.Profiles)), "ПЛОТИНА")
@@ -847,6 +931,9 @@ func main() {
 		settings, _ := store.GetSettings()
 		settings.SubscriptionURL = ""
 		settings.SubscriptionToken = ""
+		settings.SubscriptionUsername = ""
+		settings.SubscriptionServer = ""
+		settings.SubscriptionExpiresAt = time.Time{}
 		_ = store.SaveSettings(settings)
 
 		updatedProfiles, _ := store.ListProfiles()
@@ -1107,7 +1194,7 @@ func main() {
 		}
 	})
 
-	currentAppVersion := "1.2.0"
+	currentAppVersion := "1.2.1"
 
 	ui.On("checkUpdate", func(payload json.RawMessage) {
 		ui.Log("Проверка обновлений на сервере...", "БОБР")

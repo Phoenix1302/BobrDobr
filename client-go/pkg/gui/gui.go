@@ -322,6 +322,10 @@ func (g *GUI) Run() error {
 		}
 	})
 
+	w.Bind("getClipboardText", func() string {
+		return GetClipboardText()
+	})
+
 	w.SetHtml(string(htmlData))
 
 	// Run main event loop

@@ -17,7 +17,7 @@
 #endif
 
 #ifndef AppVersion
-  #define AppVersion "1.2.0"
+  #define AppVersion "1.2.1"
 #endif
 
 #ifndef AppPublisher
@@ -95,7 +95,7 @@ UsedUserAreasWarning=no
 
 ; Output settings
 OutputDir={#OutputDir}
-OutputBaseFilename=BobrDobr-Setup
+OutputBaseFilename=BobrDobr-Setup-v{#AppVersion}
 SetupIconFile={#AssetsDir}\bobr_logo.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}
@@ -206,7 +206,7 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExe
 ; Whitelist VPN core daemons in Windows Firewall to prevent any firewall prompt popups
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""BobrDobr AmneziaWG"" dir=in action=allow program=""{app}\bin\amneziawg-go.exe"" enable=yes profile=any"; Flags: runhidden
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""BobrDobr OpenConnect"" dir=in action=allow program=""{app}\bin\openconnect.exe"" enable=yes profile=any"; Flags: runhidden
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram}"; Flags: nowait postinstall skipifsilent runascurrentuser
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram}"; Flags: shellexec nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""BobrDobr AmneziaWG"""; Flags: runhidden; RunOnceId: "DelFwRuleAmneziaWG"

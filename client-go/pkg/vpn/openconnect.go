@@ -23,6 +23,8 @@ type OpenConnectConfig struct {
 	Password         string   `json:"-"` // Never logged or exposed in JSON/CLI
 	Protocol         string   `json:"protocol"`
 	Script           string   `json:"script"`
+	InterfaceName    string   `json:"interface_name,omitempty"`
+	PhysicalGateway  string   `json:"physical_gateway,omitempty"`
 	CamouflageSecret string   `json:"camouflage_secret,omitempty"`
 	ConnectURL       string   `json:"connect_url,omitempty"`
 	Group            string   `json:"group,omitempty"`
@@ -175,6 +177,10 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 		args = append(args, "--authgroup", cfg.Group)
 	}
 
+	if cfg.InterfaceName != "" {
+		args = append(args, "--interface", cfg.InterfaceName)
+	}
+
 	if cfg.Script != "" {
 		scriptArg := strings.Trim(strings.TrimSpace(cfg.Script), `"`)
 		args = append(args, "--script", scriptArg)
@@ -204,6 +210,9 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 	}
 	if !pathUpdated {
 		env = append(env, fmt.Sprintf("PATH=%s", binDir))
+	}
+	if cfg.PhysicalGateway != "" {
+		env = append(env, fmt.Sprintf("PHYSICAL_GW=%s", cfg.PhysicalGateway))
 	}
 	cmd.Env = env
 
@@ -316,6 +325,22 @@ func (s *OpenConnectSupervisor) ParseLine(line, channel string) {
 		}
 	}
 
+	// Disconnecting / Graceful termination states
+	disconnectingKeywords := []string{
+		"user cancelled",
+		"user detached",
+		"logout of session completed",
+		"session terminated",
+		"bye packet",
+	}
+
+	for _, kw := range disconnectingKeywords {
+		if strings.Contains(lower, kw) {
+			s.emit(StateDisconnecting, line, channel, map[string]interface{}{"keyword": kw})
+			return
+		}
+	}
+
 	// Connecting states
 	connectingKeywords := []string{
 		"attempting to connect",
@@ -335,7 +360,6 @@ func (s *OpenConnectSupervisor) ParseLine(line, channel string) {
 	errorKeywords := []string{
 		"authentication failed",
 		"failed to connect",
-		"user cancelled",
 		"certificate validation failed",
 		"ssl connection failure",
 		"unknown host",
@@ -355,7 +379,7 @@ func (s *OpenConnectSupervisor) ParseLine(line, channel string) {
 	s.emit(currentState, line, channel, nil)
 }
 
-// Stop gracefully terminates OpenConnect by sending CTRL_BREAK / CTRL_C
+// Stop gracefully terminates OpenConnect by sending CTRL_C / CTRL_BREAK
 // to allow sending the AnyConnect BYE packet before exit.
 func (s *OpenConnectSupervisor) Stop(ctx context.Context) error {
 	s.mu.Lock()
@@ -368,18 +392,26 @@ func (s *OpenConnectSupervisor) Stop(ctx context.Context) error {
 	pid := cmd.Process.Pid
 	s.mu.Unlock()
 
-	s.emit(StateDisconnecting, fmt.Sprintf("Stopping OpenConnect session (PID: %d)...", pid), "sys", nil)
+	s.emit(StateDisconnecting, fmt.Sprintf("Stopping OpenConnect session (PID: %d)...", pid), "sys", map[string]interface{}{"pid": pid})
 
 	// 1. Send graceful signal so OpenConnect can send AnyConnect BYE packet
-	_ = SendGracefulSignal(pid)
+	sigSent := SendGracefulSignal(pid)
+	if sigSent {
+		s.emit(StateDisconnecting, fmt.Sprintf("Sent graceful termination signal (SIGINT/CTRL-C) to OpenConnect (PID: %d)", pid), "sys", map[string]interface{}{"pid": pid, "graceful": true})
+	} else {
+		s.emit(StateDisconnecting, fmt.Sprintf("Failed to send graceful signal to OpenConnect (PID: %d), waiting for exit or force kill", pid), "sys", map[string]interface{}{"pid": pid, "graceful": false})
+	}
 
-	// 2. Wait up to 1.5s for graceful exit
+	// 2. Wait up to 3.5s for graceful exit to allow sending BYE packet
 	if exitCh != nil {
 		select {
 		case <-exitCh:
+			s.emit(StateDisconnected, fmt.Sprintf("OpenConnect session terminated cleanly (PID: %d)", pid), "sys", map[string]interface{}{"pid": pid, "clean": true})
 			return nil
-		case <-time.After(1500 * time.Millisecond):
+		case <-time.After(3500 * time.Millisecond):
+			s.emit(StateDisconnecting, fmt.Sprintf("OpenConnect (PID: %d) did not terminate within graceful timeout (3.5s), forcing kill...", pid), "sys", map[string]interface{}{"pid": pid})
 		case <-ctx.Done():
+			s.emit(StateDisconnecting, fmt.Sprintf("Context cancelled while waiting for OpenConnect (PID: %d) exit", pid), "sys", map[string]interface{}{"pid": pid})
 		}
 	}
 
@@ -394,6 +426,7 @@ func (s *OpenConnectSupervisor) Stop(ctx context.Context) error {
 	if exitCh != nil {
 		select {
 		case <-exitCh:
+			s.emit(StateDisconnected, fmt.Sprintf("OpenConnect forcibly terminated (PID: %d)", pid), "sys", map[string]interface{}{"pid": pid, "clean": false})
 		case <-time.After(1000 * time.Millisecond):
 		}
 	}

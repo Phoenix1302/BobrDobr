@@ -5,7 +5,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.0",
+    [string]$Version = "1.2.1",
     [switch]$SkipTests
 )
 
@@ -63,5 +63,6 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " [SUCCESS] Build and packaging complete!" -ForegroundColor Green
-Write-Host " Installer: $distInstallerDir\BobrDobr-Setup.exe" -ForegroundColor Cyan
+Write-Host " Installer: $distInstallerDir\BobrDobr-Setup-v$Version.exe" -ForegroundColor Cyan
+Write-Host " Generic:   $distInstallerDir\BobrDobr-Setup.exe" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Green

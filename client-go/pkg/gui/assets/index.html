@@ -698,19 +698,38 @@
     .split-badge {
       font-size: 10px;
       font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
       background: rgba(255, 255, 255, 0.06);
       color: #94a3b8;
-      border: 1px solid rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 4px;
-      padding: 2px 7px;
+      padding: 2px 6px;
       white-space: nowrap;
       flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1.2;
     }
 
     .split-badge.split-active {
       background: rgba(6, 182, 212, 0.12);
       color: #38bdf8;
-      border-color: rgba(6, 182, 212, 0.30);
+      border-color: rgba(6, 182, 212, 0.35);
+    }
+
+    .modal-proto-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .modal-proto-icon svg {
+      width: 22px;
+      height: 22px;
     }
 
     .card-actions-group {
@@ -1460,8 +1479,8 @@
 
     .sub-grid-params {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      grid-template-columns: minmax(320px, 1.25fr) minmax(210px, 1fr);
+      gap: 10px 16px;
       font-size: 12px;
     }
 
@@ -1470,11 +1489,17 @@
       align-items: center;
       gap: 6px;
       color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .sub-param-item > span:first-child {
+      flex-shrink: 0;
+      white-space: nowrap;
     }
 
     .sub-param-val {
       font-weight: 600;
       color: #38bdf8;
+      white-space: nowrap;
     }
     .sub-param-val.emerald {
       color: #34d399;
@@ -1541,7 +1566,7 @@
     }
 
     #sub-modal .modal-box {
-      max-width: 620px;
+      max-width: 680px;
     }
 
     .sub-modal-foot {
@@ -1907,7 +1932,7 @@
           <div class="brand-text-col">
             <div class="brand-title-row">
               <span class="brand-name">БобрДобр VPN</span>
-              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.2.0</span>
+              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.2.1</span>
               <span class="update-badge" id="app-update-badge" style="display:none;" onclick="openModal('update-modal')">🚀 Обновление</span>
             </div>
           </div>
@@ -1984,7 +2009,7 @@
       </div>
       <div class="logs-content" id="logs-console">
         <div class="log-row" data-tag="БОБР">
-          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема BobrDobr VPN v1.2.0 готова к работе.
+          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема BobrDobr VPN v1.2.1 готова к работе.
         </div>
       </div>
       <div class="logs-empty-state" id="logs-empty-filter" style="display:none;">
@@ -2165,7 +2190,7 @@
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-head">
         <div class="modal-head-left">
-          <span style="font-size: 20px; color:#f59e0b;">⚡</span>
+          <span style="font-size: 20px; color:#f59e0b;">🔌</span>
           <div>
             <div class="modal-title-main">Создание подключения</div>
             <div class="modal-subtitle-main">Выберите тип подключения или добавьте подписку</div>
@@ -2264,26 +2289,26 @@
               <div class="form-grid-2">
                 <div class="form-group">
                   <label class="form-label">Сервер / Хост: *</label>
-                  <input type="text" class="form-input" id="new-awg-server" placeholder="185.220.101.5 или vpn.domain.com" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-awg-server" placeholder="Например: 185.220.101.5 или vpn.domain.com" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
-                  <input type="number" class="form-input" id="new-awg-port" placeholder="51820" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-port" placeholder="Например: 51820" oninput="onFieldInput('new')">
                 </div>
               </div>
 
               <div class="form-grid-3">
                 <div class="form-group">
                   <label class="form-label">Клиентский IP: *</label>
-                  <input type="text" class="form-input" id="new-awg-address" placeholder="10.8.0.2/32" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-awg-address" placeholder="Например: 10.8.0.2/32" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">DNS-серверы:</label>
-                  <input type="text" class="form-input" id="new-awg-dns" placeholder="1.1.1.1, 8.8.8.8" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-awg-dns" placeholder="Необязательно (напр. 1.1.1.1, 8.8.8.8)" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">MTU:</label>
-                  <input type="number" class="form-input" id="new-awg-mtu" placeholder="1280" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-awg-mtu" placeholder="Необязательно (напр. 1280)" oninput="onFieldInput('new')">
                 </div>
               </div>
             </div>
@@ -2293,29 +2318,29 @@
               <div class="form-grid-2">
                 <div class="form-group">
                   <label class="form-label">Сервер / Хост: *</label>
-                  <input type="text" class="form-input" id="new-oc-server" placeholder="vpn.company.com" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-oc-server" placeholder="Например: vpn.company.com" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
-                  <input type="number" class="form-input" id="new-oc-port" placeholder="443" oninput="onFieldInput('new')">
+                  <input type="number" class="form-input" id="new-oc-port" placeholder="Например: 443" oninput="onFieldInput('new')">
                 </div>
               </div>
               <div class="form-grid-2">
                 <div class="form-group">
                   <label class="form-label">Имя пользователя:</label>
-                  <input type="text" class="form-input" id="new-oc-user" placeholder="egor" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-oc-user" placeholder="Логин пользователя" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Пароль:</label>
                   <div style="position:relative;">
-                    <input type="password" class="form-input" id="new-oc-pass" placeholder="••••••••" style="padding-right:32px; width:100%;" oninput="onFieldInput('new')">
+                    <input type="password" class="form-input" id="new-oc-pass" placeholder="Пароль" style="padding-right:32px; width:100%;" oninput="onFieldInput('new')">
                     <span style="position:absolute; right:8px; top:7px; cursor:pointer; color:#64748b;" onclick="togglePassVisibility('new-oc-pass')">👁</span>
                   </div>
                 </div>
               </div>
               <div class="form-group">
                 <label class="form-label">Маскировка (?kurwa / User-Agent camo):</label>
-                <input type="text" class="form-input" id="new-oc-cam" placeholder="Секретная фраза обфускации" oninput="onFieldInput('new')">
+                <input type="text" class="form-input" id="new-oc-cam" placeholder="Секретная строка (необязательно)" oninput="onFieldInput('new')">
               </div>
             </div>
           </div>
@@ -2402,7 +2427,7 @@
                 <span>Разрешённые подсети туннеля (AllowedIPs):</span>
                 <span class="form-label-hint">0.0.0.0/0, ::/0 — весь интернет</span>
               </label>
-              <input type="text" class="form-input" id="new-awg-allowed-ips" placeholder="0.0.0.0/0, ::/0" oninput="onFieldInput('new')">
+              <input type="text" class="form-input" id="new-awg-allowed-ips" placeholder="По умолчанию: 0.0.0.0/0, ::/0" oninput="onFieldInput('new')">
             </div>
 
             <div class="info-callout" style="border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.08);">
@@ -2450,7 +2475,7 @@
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-head">
         <div class="modal-head-left">
-          <span style="font-size: 20px; color:#38bdf8;">⚙</span>
+          <span id="edit-modal-proto-icon" class="modal-proto-icon" style="display:inline-flex; align-items:center;"></span>
           <div>
             <div class="modal-title-main">Настройки подключения</div>
             <div class="modal-subtitle-main" id="edit-modal-subtitle">Редактирование параметров плотины</div>
@@ -2795,7 +2820,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size:11.5px; color:#fff; font-weight:700;">Версия программы:</div>
-              <div style="font-size:11px; color:var(--text-muted);">BobrDobr VPN v1.2.0 (Go Native Engine)</div>
+              <div style="font-size:11px; color:var(--text-muted);">BobrDobr VPN v1.2.1 (Go Native Engine)</div>
             </div>
             <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000); callGo('checkUpdate')">🔄 Проверить обновления</button>
           </div>
@@ -2972,20 +2997,34 @@
     const btnPasteSubUrl = document.getElementById("btn-paste-sub-url");
     if (btnPasteSubUrl) {
       btnPasteSubUrl.onclick = async function() {
+        const input = document.getElementById("new-sub-url");
+        let text = "";
         try {
-          if (navigator.clipboard && navigator.clipboard.readText) {
-            const text = await navigator.clipboard.readText();
-            if (text) {
-              document.getElementById("new-sub-url").value = text.trim();
-              return;
-            }
+          if (typeof window.getClipboardText === "function") {
+            text = await window.getClipboardText();
           }
         } catch (err) {
-          console.warn("Clipboard readText failed:", err);
+          console.warn("window.getClipboardText failed:", err);
         }
-        const manual = prompt("Вставьте ссылку на подписку (URL):");
-        if (manual) {
-          document.getElementById("new-sub-url").value = manual.trim();
+        if (!text && navigator.clipboard && navigator.clipboard.readText) {
+          try {
+            text = await navigator.clipboard.readText();
+          } catch (err) {
+            console.warn("navigator.clipboard.readText failed:", err);
+          }
+        }
+        if (text && typeof text === "string" && text.trim()) {
+          if (input) {
+            input.value = text.trim();
+            input.focus();
+            if (typeof updateValidationStatus === "function") {
+              updateValidationStatus("new");
+            }
+          }
+        } else {
+          if (input) {
+            input.focus();
+          }
         }
       };
     }
@@ -3188,7 +3227,7 @@
 
     function buildConfString(prefix) {
       const server = (document.getElementById(`${prefix}-awg-server`) || {}).value || "";
-      const port = (document.getElementById(`${prefix}-awg-port`) || {}).value || "51820";
+      const port = (document.getElementById(`${prefix}-awg-port`) || {}).value || "";
       const address = (document.getElementById(`${prefix}-awg-address`) || {}).value || "";
       const dns = (document.getElementById(`${prefix}-awg-dns`) || {}).value || "";
       const mtu = (document.getElementById(`${prefix}-awg-mtu`) || {}).value || "";
@@ -3201,11 +3240,17 @@
       const h2 = (document.getElementById(`${prefix}-awg-h2`) || {}).value || "";
       const h3 = (document.getElementById(`${prefix}-awg-h3`) || {}).value || "";
       const h4 = (document.getElementById(`${prefix}-awg-h4`) || {}).value || "";
-      const allowedIps = (document.getElementById(`${prefix}-awg-allowed-ips`) || {}).value || "0.0.0.0/0, ::/0";
+      const allowedIps = (document.getElementById(`${prefix}-awg-allowed-ips`) || {}).value || "";
 
       const privKey = (document.getElementById(`${prefix}-awg-privkey`) || {}).value || "";
       const pubKey = (document.getElementById(`${prefix}-awg-pubkey`) || {}).value || "";
       const psk = (document.getElementById(`${prefix}-awg-presharedkey`) || {}).value || "";
+
+      // If all fields are completely empty, return empty string so conf stays clean
+      if (!server && !port && !address && !dns && !mtu && !privKey && !pubKey && !psk &&
+          !jc && !jmin && !jmax && !s1 && !s2 && !h1 && !h2 && !h3 && !h4 && !allowedIps) {
+        return "";
+      }
 
       let lines = ["[Interface]"];
       if (privKey) lines.push(`PrivateKey = ${privKey}`);
@@ -3254,11 +3299,13 @@
       el.style.display = "inline-flex";
 
       let isValid = false;
+      let missingFieldsMsg = "Заполните обязательные поля (Сервер, Порт)";
       if (proto === "openconnect") {
         const srv = ((document.getElementById(`${prefix}-oc-server`) || {}).value || "").trim();
         const prt = ((document.getElementById(`${prefix}-oc-port`) || {}).value || "").trim();
         const usr = ((document.getElementById(`${prefix}-oc-user`) || {}).value || "").trim();
-        isValid = srv.length > 0 && prt.length > 0 && usr.length > 0;
+        isValid = srv.length > 0 && prt.length > 0;
+        missingFieldsMsg = "Заполните Сервер и Порт OpenConnect";
       } else {
         // AmneziaWG: check that server, port, and client IP/keys (or valid [Interface] / [Peer] in .conf) are present
         const srv = ((document.getElementById(`${prefix}-awg-server`) || {}).value || "").trim();
@@ -3268,9 +3315,11 @@
         const pub = ((document.getElementById(`${prefix}-awg-pubkey`) || {}).value || "").trim();
         const confTa = ((document.getElementById(`${prefix}-prof-conf`) || {}).value || "").trim();
 
-        const hasConfValid = confTa.includes("[Interface]") && confTa.includes("[Peer]");
+        const hasConfValid = confTa.length > 0 && confTa.includes("[Interface]") && confTa.includes("[Peer]") &&
+          (confTa.includes("Endpoint") || confTa.includes("PrivateKey") || confTa.includes("PublicKey") || confTa.includes("Address"));
         const hasFieldsValid = srv.length > 0 && prt.length > 0 && (addr.length > 0 || priv.length > 0 || pub.length > 0);
         isValid = hasFieldsValid || hasConfValid;
+        missingFieldsMsg = "Заполните Сервер, Порт и Клиентский IP или .conf";
       }
 
       if (isValid) {
@@ -3278,7 +3327,7 @@
         el.innerHTML = '<span style="color:#34d399;">🟢 Конфигурация валидна</span>';
       } else {
         el.className = "conn-validation-status invalid";
-        el.innerHTML = '<span style="color:#fbbf24;">⚠️ Заполните обязательные поля (Сервер, Порт)</span>';
+        el.innerHTML = `<span style="color:#fbbf24;">⚠️ ${missingFieldsMsg}</span>`;
       }
     }
 
@@ -3351,15 +3400,15 @@
         document.getElementById(`${prefix}-awg-h3`).value = 30;
         document.getElementById(`${prefix}-awg-h4`).value = 40;
       } else {
-        document.getElementById(`${prefix}-awg-jc`).value = 0;
-        document.getElementById(`${prefix}-awg-jmin`).value = 0;
-        document.getElementById(`${prefix}-awg-jmax`).value = 0;
-        document.getElementById(`${prefix}-awg-s1`).value = 0;
-        document.getElementById(`${prefix}-awg-s2`).value = 0;
-        document.getElementById(`${prefix}-awg-h1`).value = 0;
-        document.getElementById(`${prefix}-awg-h2`).value = 0;
-        document.getElementById(`${prefix}-awg-h3`).value = 0;
-        document.getElementById(`${prefix}-awg-h4`).value = 0;
+        document.getElementById(`${prefix}-awg-jc`).value = "";
+        document.getElementById(`${prefix}-awg-jmin`).value = "";
+        document.getElementById(`${prefix}-awg-jmax`).value = "";
+        document.getElementById(`${prefix}-awg-s1`).value = "";
+        document.getElementById(`${prefix}-awg-s2`).value = "";
+        document.getElementById(`${prefix}-awg-h1`).value = "";
+        document.getElementById(`${prefix}-awg-h2`).value = "";
+        document.getElementById(`${prefix}-awg-h3`).value = "";
+        document.getElementById(`${prefix}-awg-h4`).value = "";
       }
       onFieldInput(prefix);
     }
@@ -3387,12 +3436,23 @@
       document.getElementById("new-awg-privkey").value = "";
       document.getElementById("new-awg-pubkey").value = "";
       document.getElementById("new-awg-presharedkey").value = "";
+
+      // Obfuscation parameters - completely empty by default
+      document.getElementById("new-awg-jc").value = "";
+      document.getElementById("new-awg-jmin").value = "";
+      document.getElementById("new-awg-jmax").value = "";
+      document.getElementById("new-awg-s1").value = "";
+      document.getElementById("new-awg-s2").value = "";
+      document.getElementById("new-awg-h1").value = "";
+      document.getElementById("new-awg-h2").value = "";
+      document.getElementById("new-awg-h3").value = "";
+      document.getElementById("new-awg-h4").value = "";
+
       document.getElementById("new-oc-server").value = "";
       document.getElementById("new-oc-port").value = "";
       document.getElementById("new-oc-user").value = "";
       document.getElementById("new-oc-pass").value = "";
       document.getElementById("new-oc-cam").value = "";
-      applyPresetAwg('new', 'zero');
       updateValidationStatus('new');
     }
 
@@ -3512,6 +3572,13 @@
       document.getElementById("edit-prof-name").value = p.name || "";
       document.getElementById("edit-prof-proto").value = p.protocol || "amneziawg";
       document.getElementById("edit-modal-subtitle").textContent = `${p.protocol === 'openconnect' ? 'OpenConnect' : 'AmneziaWG'} • ID: ${p.id}`;
+
+      const editProtoIconEl = document.getElementById("edit-modal-proto-icon");
+      if (editProtoIconEl) {
+        editProtoIconEl.innerHTML = p.protocol === "openconnect"
+          ? `<svg viewBox="0 0 24 24" fill="none" width="22" height="22"><path d="M22 12a10.06 10.06 0 0 0-20 0Z" fill="rgba(34,211,238,0.15)" stroke="#22d3ee" stroke-width="2"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/></svg>`
+          : `<svg viewBox="0 0 48 48" fill="none" width="22" height="22"><circle cx="24" cy="24" r="18.5" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="2.8"/><path d="m8.6 11 9.9 28.5 5.5-16.8 5.4 16.8 10-28.5" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
 
       const awgFields = document.getElementById("edit-awg-fields");
       const ocFields = document.getElementById("edit-oc-fields");
@@ -3901,8 +3968,8 @@
           : `<svg class="proto-icon" viewBox="0 0 24 24" fill="none"><path d="M22 12a10.06 10.06 0 0 0-20 0Z" fill="rgba(34,211,238,0.15)" stroke="#22d3ee" stroke-width="2"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/></svg>`;
 
         const hasBypass = (p.bypass_domains && p.bypass_domains.length > 0) || p.split_tunnel;
-        const splitBadgeText = hasBypass ? "Исключения" : "Весь трафик";
-        const splitBadgeTitle = hasBypass ? "Настроен обход для выбранных доменов/подсетей" : "Маршрутизация: Весь трафик (0.0.0.0/0)";
+        const splitBadgeText = hasBypass ? "BYPASS" : "ALL";
+        const splitBadgeTitle = hasBypass ? "Маршрутизация: Раздельное туннелирование (настроены исключения)" : "Маршрутизация: Весь интернет-трафик направляется через VPN (0.0.0.0/0)";
         const splitClass = hasBypass ? "split-active" : "";
 
         const subRow = document.createElement("div");
@@ -4012,8 +4079,8 @@
         }
 
         const hasBypass = (p.bypass_domains && p.bypass_domains.length > 0) || p.split_tunnel;
-        const splitBadgeText = hasBypass ? "Исключения" : "Весь трафик";
-        const splitBadgeTitle = hasBypass ? "Настроен обход для выбранных доменов/подсетей" : "Маршрутизация: Весь трафик (0.0.0.0/0)";
+        const splitBadgeText = hasBypass ? "BYPASS" : "ALL";
+        const splitBadgeTitle = hasBypass ? "Маршрутизация: Раздельное туннелирование (настроены исключения)" : "Маршрутизация: Весь интернет-трафик направляется через VPN (0.0.0.0/0)";
         const splitClass = hasBypass ? "split-active" : "";
 
         // Main Card Element
@@ -4028,7 +4095,6 @@
               </span>
               ${isSub ? `<span class="sub-badge">${subIconSvg}<span>sub</span></span>` : ""}
               <span class="profile-name-text" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
-              <span class="split-badge ${splitClass}" title="${splitBadgeTitle}">${splitBadgeText}</span>
             </div>
             <div class="card-actions-group">
               <span class="card-status-badge ${statusBadgeClass}">${statusBadgeText}</span>
@@ -4043,10 +4109,10 @@
               <span class="divider">|</span>
               <span>📡 <span class="val-highlight" style="color:#fbbf24;">${escapeHtml(p.address || 'Авто')}</span></span>
               <span class="divider">|</span>
-              <span class="interface-pill">${escapeHtml(appState.activeAdapter || 'bobr0')}</span>
+              <span class="split-badge ${splitClass}" title="${splitBadgeTitle}">${splitBadgeText}</span>
             </div>
             <div class="card-mgmt-btns">
-              <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 10px;" onclick="event.stopPropagation(); openEditProfileModal('${p.id}')">⚙ Настройки</button>
+              <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 10px; display:inline-flex; align-items:center; gap:5px;" onclick="event.stopPropagation(); openEditProfileModal('${p.id}')">⚙ <span>Настройки</span></button>
               <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 10px; color:#fca5a5;" onclick="event.stopPropagation(); handleDeleteClick('${p.id}')">🗑 Удалить</button>
             </div>
           </div>
@@ -4188,11 +4254,67 @@
       }
     }
 
+    function getDaysDeclension(n) {
+      const abs = Math.abs(n) % 100;
+      const rem = abs % 10;
+      if (abs > 10 && abs < 20) return "дней";
+      if (rem > 1 && rem < 5) return "дня";
+      if (rem === 1) return "день";
+      return "дней";
+    }
+
     function formatExpiresAt(expires) {
-      if (!expires || typeof expires !== "string") return "Бессрочно";
-      const trimmed = expires.trim();
-      if (!trimmed || trimmed.includes("0001") || trimmed === "Бессрочно") return "Бессрочно";
-      return trimmed;
+      if (!expires) return "Бессрочно";
+      if (typeof expires !== "string" && !(expires instanceof Date) && typeof expires !== "number") {
+        return "Бессрочно";
+      }
+
+      let date = null;
+      if (expires instanceof Date) {
+        date = expires;
+      } else if (typeof expires === "number") {
+        date = new Date(expires > 1e11 ? expires : expires * 1000);
+      } else {
+        const trimmed = expires.trim();
+        if (!trimmed || trimmed === "Бессрочно" || trimmed.includes("0001")) {
+          return "Бессрочно";
+        }
+        const dmyMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        if (dmyMatch) {
+          const d = parseInt(dmyMatch[1], 10);
+          const m = parseInt(dmyMatch[2], 10) - 1;
+          const y = parseInt(dmyMatch[3], 10);
+          date = new Date(y, m, d);
+        } else {
+          const parsed = new Date(trimmed);
+          if (!isNaN(parsed.getTime())) {
+            date = parsed;
+          }
+        }
+      }
+
+      if (!date || isNaN(date.getTime()) || date.getFullYear() <= 1) {
+        return "Бессрочно";
+      }
+
+      const dayStr = String(date.getDate()).padStart(2, "0");
+      const monthStr = String(date.getMonth() + 1).padStart(2, "0");
+      const yearStr = String(date.getFullYear());
+      const dateFormatted = `${dayStr}.${monthStr}.${yearStr}`;
+
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const expStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const diffDays = Math.round((expStart - todayStart) / (24 * 60 * 60 * 1000));
+
+      if (diffDays > 0) {
+        return `${dateFormatted} (осталось ${diffDays} ${getDaysDeclension(diffDays)})`;
+      } else if (diffDays === 0) {
+        return `${dateFormatted} (истекает сегодня)`;
+      } else {
+        const passedDays = Math.abs(diffDays);
+        return `${dateFormatted} (истекла ${passedDays} ${getDaysDeclension(passedDays)} назад)`;
+      }
     }
 
     function formatLastSync(lastSync) {
@@ -4387,13 +4509,23 @@
             if (data.error) {
               showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000);
             } else {
-              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.2.0";
+              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.2.1";
               showToast(`У вас установлена актуальная версия BobrDobr VPN (${ver})`, "success", 4000);
             }
           }
           break;
 
+        case "ready": {
+          const appVerEl = document.getElementById("app-ver-badge");
+          if (appVerEl) appVerEl.textContent = "v1.2.1";
+          break;
+        }
+
         case "settingsLoaded":
+          {
+            const appVerEl = document.getElementById("app-ver-badge");
+            if (appVerEl) appVerEl.textContent = "v1.2.1";
+          }
           if (data) {
             const elAutostart = document.getElementById("setting-autostart");
             if (elAutostart) elAutostart.checked = !!data.auto_start;
@@ -4474,6 +4606,8 @@
       if (bridgeReady) return;
       if (typeof window.nativeBridgeCall === "function") {
         bridgeReady = true;
+        const appVerEl = document.getElementById("app-ver-badge");
+        if (appVerEl) appVerEl.textContent = "v1.2.1";
         callGo("ready");
       } else {
         setTimeout(initBridge, 60);

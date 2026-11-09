@@ -71,14 +71,14 @@ function echo(level, msg)
 
 function run_silent(cmd)
 {
-    var fullCmd = comspec + " /C \"" + cmd + " > NUL 2>&1\"";
+    var fullCmd = comspec + " /S /C \" (" + cmd + ") > NUL 2>&1 \"";
     return ws.Run(fullCmd, 0, true);
 }
 
 function run(cmd)
 {
     var tmpFile = fso.GetSpecialFolder(2) + "\\" + fso.GetTempName();
-    var fullCmd = comspec + " /C \"" + cmd + " > \"" + tmpFile + "\" 2>&1\"";
+    var fullCmd = comspec + " /S /C \" (" + cmd + ") > \"\"" + tmpFile + "\"\" 2>&1 \"";
     echo(DEBUG, "-> " + fullCmd);
     var exitCode = ws.Run(fullCmd, 0, true);
 
@@ -104,8 +104,21 @@ function run(cmd)
 
 function getDefaultGateway4()
 {
-    if (run("route print").match(/0\.0\.0\.0 *(0|128)\.0\.0\.0 *([0-9\.]*)/)) {
-        return (RegExp.$2);
+    if (env("PHYSICAL_GW")) {
+        return env("PHYSICAL_GW");
+    }
+    var out = run("route print 0.0.0.0");
+    if (out.match(/0\.0\.0\.0 *0\.0\.0\.0 *([0-9\.]+)/)) {
+        var candidate = RegExp.$1;
+        if (candidate !== "0.0.0.0" && candidate !== "On-link") {
+            return candidate;
+        }
+    }
+    if (run("route print").match(/0\.0\.0\.0 *0\.0\.0\.0 *([0-9\.]+)/)) {
+        var candidate2 = RegExp.$1;
+        if (candidate2 !== "0.0.0.0" && candidate2 !== "On-link") {
+            return candidate2;
+        }
     }
     return ("");
 }
@@ -192,10 +205,9 @@ case "connect":
 
     echo(INFO, "Configuring \"" + env("TUNDEV") + "\" / " + env("TUNIDX") + " interface for Legacy IP...");
 
-    if (!env("CISCO_SPLIT_INC") && REDIRECT_GATEWAY_METHOD != 2) {
-        // Interface metric must be set to 1 in order to add a route with metric 1 since Windows Vista
-        run("netsh interface ip set interface " + env("TUNIDX") + " metric=1 store=active");
-    }
+    // Interface metric must be set to 1 in order to prioritize VPN tunnel routing & DNS
+    run("netsh interface ip set interface " + env("TUNIDX") + " metric=1 store=active");
+    run("netsh interface ipv4 set interface " + env("TUNIDX") + " metric=1 store=active");
 
     if (env("CISCO_SPLIT_INC") || REDIRECT_GATEWAY_METHOD > 0) {
         run("netsh interface ip set address " + env("TUNIDX") + " static " +
@@ -247,12 +259,15 @@ case "connect":
             echo(INFO, "Configured Legacy IP split-include route: " + network + "/" + netmasklen);
         }
     } else if (REDIRECT_GATEWAY_METHOD == 1) {
-        run("route add 0.0.0.0 mask 0.0.0.0 " + internal_gw + " metric 1");
+        run("route add 0.0.0.0 mask 0.0.0.0 " + internal_gw + " metric 1 if " + env("TUNIDX"));
         echo(INFO, "Configured Legacy IP default route.");
     } else if (REDIRECT_GATEWAY_METHOD == 2) {
-        run("route add 0.0.0.0 mask 128.0.0.0 " + internal_gw);
-        run("route add 128.0.0.0 mask 128.0.0.0 " + internal_gw);
-        echo(INFO, "Configured Legacy IP default route pair (0.0.0.0/1, 128.0.0.0/1)");
+        // Clear any stale default pairs first
+        run_silent("route delete 0.0.0.0 mask 128.0.0.0");
+        run_silent("route delete 128.0.0.0 mask 128.0.0.0");
+        run("route add 0.0.0.0 mask 128.0.0.0 " + internal_gw + " if " + env("TUNIDX"));
+        run("route add 128.0.0.0 mask 128.0.0.0 " + internal_gw + " if " + env("TUNIDX"));
+        echo(INFO, "Configured Legacy IP default route pair (0.0.0.0/1, 128.0.0.0/1) on if " + env("TUNIDX"));
     }
 
     // Add excluded routes
@@ -331,9 +346,12 @@ case "disconnect":
     
     // Delete default routes
     if (REDIRECT_GATEWAY_METHOD == 2) {
+        run_silent("route delete 0.0.0.0 mask 128.0.0.0 if " + env("TUNIDX"));
+        run_silent("route delete 128.0.0.0 mask 128.0.0.0 if " + env("TUNIDX"));
         run_silent("route delete 0.0.0.0 mask 128.0.0.0");
         run_silent("route delete 128.0.0.0 mask 128.0.0.0");
     } else if (REDIRECT_GATEWAY_METHOD == 1) {
+        run_silent("route delete 0.0.0.0 mask 0.0.0.0 " + env("INTERNAL_IP4_ADDRESS") + " if " + env("TUNIDX"));
         run_silent("route delete 0.0.0.0 mask 0.0.0.0 " + env("INTERNAL_IP4_ADDRESS"));
     }
 

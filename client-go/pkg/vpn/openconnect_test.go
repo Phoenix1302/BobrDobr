@@ -55,6 +55,31 @@ func TestOpenConnect_ParseLine(t *testing.T) {
 			line:          "Certificate validation failed: self signed certificate",
 			expectedState: StateError,
 		},
+		{
+			name:          "User cancelled (SIGINT/SIGTERM) emits Disconnecting",
+			line:          "User cancelled (SIGINT/SIGTERM); exiting.",
+			expectedState: StateDisconnecting,
+		},
+		{
+			name:          "User detached from session emits Disconnecting",
+			line:          "User detached from session (SIGHUP); exiting.",
+			expectedState: StateDisconnecting,
+		},
+		{
+			name:          "Logout of session completed emits Disconnecting",
+			line:          "Logout of session completed.",
+			expectedState: StateDisconnecting,
+		},
+		{
+			name:          "Sending BYE packet emits Disconnecting",
+			line:          "Sending BYE packet: Disconnected by user",
+			expectedState: StateDisconnecting,
+		},
+		{
+			name:          "Session terminated emits Disconnecting",
+			line:          "Session terminated cleanly by client",
+			expectedState: StateDisconnecting,
+		},
 	}
 
 	for _, tc := range tests {
@@ -174,5 +199,133 @@ func TestOpenConnect_CleanScriptArgument(t *testing.T) {
 
 	if !foundScript {
 		t.Errorf("expected --script argument in capturedArgs: %v", capturedArgs)
+	}
+}
+
+func TestOpenConnect_InterfaceAndPhysicalGateway(t *testing.T) {
+	sup := NewOpenConnectSupervisor("openconnect", nil)
+
+	var capturedArgs []string
+	var capturedEnv []string
+
+	sup.SetCmdFactory(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		cmd := exec.Command("cat")
+		return cmd
+	})
+
+	cfg := OpenConnectConfig{
+		Server:          "vpn.example.com",
+		Port:            443,
+		Username:        "bob",
+		InterfaceName:   "bobr0",
+		PhysicalGateway: "192.168.0.1",
+	}
+
+	ctx := context.Background()
+	if err := sup.Start(ctx, cfg); err != nil {
+		t.Fatalf("sup.Start failed: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = sup.Stop(stopCtx)
+	}()
+
+	capturedEnv = sup.cmd.Env
+
+	foundInterface := false
+	for i, arg := range capturedArgs {
+		if arg == "--interface" && i+1 < len(capturedArgs) && capturedArgs[i+1] == "bobr0" {
+			foundInterface = true
+			break
+		}
+	}
+	if !foundInterface {
+		t.Errorf("expected '--interface bobr0' in capturedArgs: %v", capturedArgs)
+	}
+
+	foundGw := false
+	for _, e := range capturedEnv {
+		if e == "PHYSICAL_GW=192.168.0.1" {
+			foundGw = true
+			break
+		}
+	}
+	if !foundGw {
+		t.Errorf("expected 'PHYSICAL_GW=192.168.0.1' in cmd.Env: %v", capturedEnv)
+	}
+}
+
+func TestOpenConnect_StartStop_WithMockProcess(t *testing.T) {
+	sup := NewOpenConnectSupervisor("openconnect", nil)
+
+	sup.SetCmdFactory(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.Command("sleep", "2")
+	})
+
+	var events []Event
+	var mu sync.Mutex
+	sup.AddListener(func(ev Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, ev)
+	})
+
+	cfg := OpenConnectConfig{
+		Server: "vpn.example.com",
+		Port:   443,
+	}
+
+	ctx := context.Background()
+	err := sup.Start(ctx, cfg)
+	if err != nil {
+		t.Fatalf("sup.Start failed: %v", err)
+	}
+
+	if !sup.IsRunning() {
+		t.Errorf("expected sup.IsRunning() to be true")
+	}
+
+	if sup.PID() <= 0 {
+		t.Errorf("expected positive PID, got %d", sup.PID())
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = sup.Stop(stopCtx)
+	if err != nil {
+		t.Fatalf("sup.Stop failed: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	hasConnecting := false
+	hasDisconnecting := false
+	hasDisconnected := false
+	for _, ev := range events {
+		if ev.State == StateConnecting {
+			hasConnecting = true
+		}
+		if ev.State == StateDisconnecting {
+			hasDisconnecting = true
+		}
+		if ev.State == StateDisconnected {
+			hasDisconnected = true
+		}
+	}
+
+	if !hasConnecting {
+		t.Errorf("expected StateConnecting event to be emitted")
+	}
+	if !hasDisconnecting {
+		t.Errorf("expected StateDisconnecting event to be emitted")
+	}
+	if !hasDisconnected {
+		t.Errorf("expected StateDisconnected event to be emitted")
 	}
 }

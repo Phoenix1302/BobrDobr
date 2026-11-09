@@ -83,9 +83,12 @@ type Settings struct {
 	CheckUpdates      bool      `json:"check_updates"`
 	KillSwitch        bool      `json:"kill_switch"`
 	DNSLeakProtection bool      `json:"dns_leak_protection"`
-	SubscriptionURL   string    `json:"subscription_url"`
-	SubscriptionToken string    `json:"subscription_token"`
-	LastSyncTime      time.Time `json:"last_sync_time"`
+	SubscriptionURL        string    `json:"subscription_url"`
+	SubscriptionToken      string    `json:"subscription_token"`
+	SubscriptionUsername   string    `json:"subscription_username,omitempty"`
+	SubscriptionServer     string    `json:"subscription_server,omitempty"`
+	SubscriptionExpiresAt  time.Time `json:"subscription_expires_at,omitempty"`
+	LastSyncTime           time.Time `json:"last_sync_time"`
 	Theme             string    `json:"theme"`
 	Language          string    `json:"language"`
 }

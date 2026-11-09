@@ -10,13 +10,14 @@ import (
 )
 
 var (
-	procOpenClipboard   = moduser32.NewProc("OpenClipboard")
-	procCloseClipboard  = moduser32.NewProc("CloseClipboard")
-	procEmptyClipboard  = moduser32.NewProc("EmptyClipboard")
+	procOpenClipboard    = moduser32.NewProc("OpenClipboard")
+	procCloseClipboard   = moduser32.NewProc("CloseClipboard")
+	procEmptyClipboard   = moduser32.NewProc("EmptyClipboard")
 	procSetClipboardData = moduser32.NewProc("SetClipboardData")
+	procGetClipboardData = moduser32.NewProc("GetClipboardData")
 
-	procGlobalAlloc = modkernel32.NewProc("GlobalAlloc")
-	procGlobalLock  = modkernel32.NewProc("GlobalLock")
+	procGlobalAlloc  = modkernel32.NewProc("GlobalAlloc")
+	procGlobalLock   = modkernel32.NewProc("GlobalLock")
 	procGlobalUnlock = modkernel32.NewProc("GlobalUnlock")
 )
 
@@ -62,4 +63,26 @@ func SetClipboardText(text string) error {
 	}
 
 	return nil
+}
+
+// GetClipboardText reads plain text from Windows clipboard using Win32 API.
+func GetClipboardText() string {
+	r, _, _ := procOpenClipboard.Call(0)
+	if r == 0 {
+		return ""
+	}
+	defer procCloseClipboard.Call()
+
+	hMem, _, _ := procGetClipboardData.Call(CF_UNICODETEXT)
+	if hMem == 0 {
+		return ""
+	}
+
+	ptr, _, _ := procGlobalLock.Call(hMem)
+	if ptr == 0 {
+		return ""
+	}
+	defer procGlobalUnlock.Call(hMem)
+
+	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(ptr)))
 }

@@ -25,7 +25,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.0",
+    [string]$Version = "1.2.1",
     [string]$OutputDir,
     [switch]$NoSign,
     [switch]$Clean
@@ -143,29 +143,35 @@ if ($proc.ExitCode -ne 0) {
     throw "Inno Setup compilation failed with exit code $($proc.ExitCode)."
 }
 
-$outputSetupExe = Join-Path $resolvedOutputDir "BobrDobr-Setup.exe"
-if (-not (Test-Path $outputSetupExe)) {
-    throw "Expected setup binary not found at '$outputSetupExe'."
+$versionedSetupExe = Join-Path $resolvedOutputDir "BobrDobr-Setup-v$Version.exe"
+if (-not (Test-Path $versionedSetupExe)) {
+    throw "Expected setup binary not found at '$versionedSetupExe'."
 }
 
-Write-Host "[OK] Inno Setup compilation succeeded: $outputSetupExe" -ForegroundColor Green
+Write-Host "[OK] Inno Setup compilation succeeded: $versionedSetupExe" -ForegroundColor Green
 
 # 6. Sign the Setup Installer
 if (-not $NoSign) {
     Write-Host "[*] Signing installer binary with Authenticode + RFC 3161 Timestamp..." -ForegroundColor Green
     $signScript = Join-Path $PSScriptRoot "Sign-Binary.ps1"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -FilePath $outputSetupExe -Force
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -FilePath $versionedSetupExe -Force
 }
 
+# Create copy BobrDobr-Setup.exe in dist/installer
+$genericSetupExe = Join-Path $resolvedOutputDir "BobrDobr-Setup.exe"
+Copy-Item -Path $versionedSetupExe -Destination $genericSetupExe -Force
+Write-Host "[OK] Created generic installer copy: $genericSetupExe" -ForegroundColor Green
+
 # 7. Verification & Checksum
-$sig = Get-AuthenticodeSignature -FilePath $outputSetupExe
-$hash = (Get-FileHash -Path $outputSetupExe -Algorithm SHA256).Hash
-$fileInfo = Get-Item -Path $outputSetupExe
+$sig = Get-AuthenticodeSignature -FilePath $versionedSetupExe
+$hash = (Get-FileHash -Path $versionedSetupExe -Algorithm SHA256).Hash
+$fileInfo = Get-Item -Path $versionedSetupExe
 
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " BUILD AND SIGNING REPORT" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host " Setup File:        $outputSetupExe" -ForegroundColor White
+Write-Host " Setup File:        $versionedSetupExe" -ForegroundColor White
+Write-Host " Generic Copy:      $genericSetupExe" -ForegroundColor White
 Write-Host " Size:              $([math]::Round($fileInfo.Length / 1MB, 2)) MB ($($fileInfo.Length) bytes)" -ForegroundColor White
 Write-Host " SHA-256:           $hash" -ForegroundColor White
 Write-Host " Signer:            $($sig.SignerCertificate.Subject)" -ForegroundColor White
@@ -174,10 +180,11 @@ Write-Host " Signature Status:  $($sig.Status)" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Green
 
 return [PSCustomObject]@{
-    SetupPath = $outputSetupExe
-    SizeBytes = $fileInfo.Length
-    SHA256    = $hash
-    Signer    = $sig.SignerCertificate.Subject
-    Timestamp = $sig.TimeStamperCertificate.Subject
-    Status    = $sig.Status.ToString()
+    SetupPath   = $versionedSetupExe
+    GenericPath = $genericSetupExe
+    SizeBytes   = $fileInfo.Length
+    SHA256      = $hash
+    Signer      = $sig.SignerCertificate.Subject
+    Timestamp   = $sig.TimeStamperCertificate.Subject
+    Status      = $sig.Status.ToString()
 }
