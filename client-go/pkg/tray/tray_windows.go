@@ -346,7 +346,7 @@ func (t *Tray) showContextMenu() {
 	}
 	defer procDestroyMenu.Call(hMenu)
 
-	headerText, _ := windows.UTF16PtrFromString("●  БобрДобр VPN v1.2.1")
+	headerText, _ := windows.UTF16PtrFromString("●  БобрДобр VPN v1.2.2")
 	procAppendMenuW.Call(hMenu, MF_STRING|MF_DISABLED, ID_MENU_HEADER, uintptr(unsafe.Pointer(headerText)))
 	procAppendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
 

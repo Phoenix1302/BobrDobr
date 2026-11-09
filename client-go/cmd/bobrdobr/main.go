@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -19,6 +18,7 @@ import (
 	"github.com/Phoenix1302/BobrDobr/pkg/config"
 	"github.com/Phoenix1302/BobrDobr/pkg/crash"
 	"github.com/Phoenix1302/BobrDobr/pkg/gui"
+	"github.com/Phoenix1302/BobrDobr/pkg/logger"
 	"github.com/Phoenix1302/BobrDobr/pkg/netadapter"
 	"github.com/Phoenix1302/BobrDobr/pkg/singleinstance"
 	"github.com/Phoenix1302/BobrDobr/pkg/subscription"
@@ -151,20 +151,6 @@ func buildAmneziaWGConfigText(cfg *config.AmneziaWGConfig) string {
 	return sb.String()
 }
 
-// syncWriter wraps an os.File and flushes with Sync() on every Write, ensuring logs are never lost on crash.
-type syncWriter struct {
-	file *os.File
-	mu   sync.Mutex
-}
-
-func (w *syncWriter) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	n, err = w.file.Write(p)
-	_ = w.file.Sync()
-	return n, err
-}
-
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -173,17 +159,20 @@ func main() {
 		}
 	}()
 
-	// 0. Initialize synchronous persistent file logging immediately at process entry
+	// 0. Initialize robust persistent file logging with automatic rotation and safe stdout fallback
 	appDir := getAppDataDir()
-	logPath := filepath.Join(appDir, "bobrdobr.log")
-	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		defer logFile.Close()
-		sw := &syncWriter{file: logFile}
-		log.SetOutput(io.MultiWriter(os.Stdout, sw))
+	logWriter, err := logger.Setup(appDir, "1.2.2")
+	if err == nil {
+		defer logWriter.Close()
 	}
 	configPath := filepath.Join(appDir, "settings.json")
 
-	// 0a. Protect host GUI process from accidental console termination (CTRL_C / CTRL_BREAK / SIGTERM)
+	// 0a. Purge leftover installers from previous updates to prevent disk clutter
+	if err := updater.CleanupOldInstallers(); err != nil {
+		log.Printf("[ОБНОВЛЕНИЕ] Очистка старых файлов установки: %v", err)
+	}
+
+	// 0b. Protect host GUI process from accidental console termination (CTRL_C / CTRL_BREAK / SIGTERM)
 	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -193,7 +182,7 @@ func main() {
 		}
 	}()
 
-	// 0b. Guarantee UAC elevation for Wintun and network route management
+	// 0c. Guarantee UAC elevation for Wintun and network route management
 	if !gui.IsElevated() {
 		if err := gui.RelaunchAsAdmin(); err == nil {
 			os.Exit(0)
@@ -201,7 +190,7 @@ func main() {
 		log.Printf("[ВНИМАНИЕ] Не удалось автоматически повысить привилегии: продолжение работы")
 	}
 
-	log.Println("[БОБР] Запуск BobrDobr VPN v1.2.1 (Go Native Engine)...")
+	log.Println("[БОБР] Запуск BobrDobr VPN v1.2.2 (Go Native Engine)...")
 
 	// 1. Single Instance Protection & Named Pipe IPC
 	instance := singleinstance.New(singleinstance.DefaultMutexName, singleinstance.DefaultPipeName)
@@ -1042,14 +1031,22 @@ func main() {
 	})
 
 	ui.On("openCabinet", func(payload json.RawMessage) {
-		settings, _ := store.GetSettings()
-		cabURL := "https://persona.netphoenix.ru"
-		if settings.SubscriptionURL != "" {
-			cabURL = subscription.ExtractCabinetURL(nil, settings.SubscriptionURL)
+		var req struct {
+			URL string `json:"url"`
 		}
-		ui.Log(fmt.Sprintf("Открытие личного кабинета: %s", cabURL), "БОБР")
+		_ = json.Unmarshal(payload, &req)
+
+		targetURL := req.URL
+		if targetURL == "" {
+			settings, _ := store.GetSettings()
+			targetURL = "https://persona.netphoenix.ru"
+			if settings.SubscriptionURL != "" {
+				targetURL = subscription.ExtractCabinetURL(nil, settings.SubscriptionURL)
+			}
+		}
+		ui.Log(fmt.Sprintf("Открытие ссылки в браузере: %s", targetURL), "БОБР")
 		if runtime.GOOS == "windows" {
-			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", cabURL).Start()
+			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetURL).Start()
 		}
 	})
 
@@ -1154,6 +1151,13 @@ func main() {
 		}
 	})
 
+	ui.On("openLogDir", func(payload json.RawMessage) {
+		if runtime.GOOS == "windows" {
+			logDir := filepath.Join(appDir, "log")
+			_ = exec.Command("explorer.exe", logDir).Start()
+		}
+	})
+
 	ui.On("getBypassExceptions", func(payload json.RawMessage) {
 		appData := os.Getenv("APPDATA")
 		if appData == "" {
@@ -1194,7 +1198,7 @@ func main() {
 		}
 	})
 
-	currentAppVersion := "1.2.1"
+	currentAppVersion := "1.2.2"
 
 	ui.On("checkUpdate", func(payload json.RawMessage) {
 		ui.Log("Проверка обновлений на сервере...", "БОБР")
@@ -1243,14 +1247,17 @@ func main() {
 			}
 			if dlURL == "" {
 				ui.Log("Не найден URL для скачивания обновления", "ПРОТЕЧКА")
+				ui.Emit("downloadError", map[string]string{"error": "Не найден URL для скачивания обновления"})
 				return
 			}
 
+			ui.Emit("downloadProgress", map[string]int{"percent": 0})
 			installerPath, err := updater.DownloadInstaller(ctx, dlURL, func(percent int) {
 				ui.Emit("downloadProgress", map[string]int{"percent": percent})
 			})
 			if err != nil {
 				ui.Log(fmt.Sprintf("Ошибка загрузки обновления: %v", err), "ПРОТЕЧКА")
+				ui.Emit("downloadError", map[string]string{"error": err.Error()})
 				return
 			}
 
@@ -1265,6 +1272,7 @@ func main() {
 
 			if err := updater.LaunchInstallerAndExit(installerPath, false); err != nil {
 				ui.Log(fmt.Sprintf("Ошибка запуска установщика: %v", err), "ПРОТЕЧКА")
+				ui.Emit("downloadError", map[string]string{"error": err.Error()})
 				return
 			}
 			ui.Close()

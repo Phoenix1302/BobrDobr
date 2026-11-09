@@ -1886,6 +1886,24 @@
       border-color: rgba(56, 189, 248, 0.5);
       box-shadow: 0 8px 32px rgba(56, 189, 248, 0.22);
     }
+    .toast-action-btn {
+      background: rgba(6, 182, 212, 0.25);
+      color: #38bdf8;
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      border-radius: 6px;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 8px;
+      transition: all 0.2s ease;
+    }
+    .toast-action-btn:hover {
+      background: rgba(6, 182, 212, 0.45);
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
     @keyframes toastSlideIn {
       from {
         opacity: 0;
@@ -1932,7 +1950,7 @@
           <div class="brand-text-col">
             <div class="brand-title-row">
               <span class="brand-name">БобрДобр VPN</span>
-              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.2.1</span>
+              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.2.2</span>
               <span class="update-badge" id="app-update-badge" style="display:none;" onclick="openModal('update-modal')">🚀 Обновление</span>
             </div>
           </div>
@@ -2009,7 +2027,7 @@
       </div>
       <div class="logs-content" id="logs-console">
         <div class="log-row" data-tag="БОБР">
-          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема BobrDobr VPN v1.2.1 готова к работе.
+          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема BobrDobr VPN v1.2.2 готова к работе.
         </div>
       </div>
       <div class="logs-empty-state" id="logs-empty-filter" style="display:none;">
@@ -2703,9 +2721,12 @@
         <button class="modal-close-x" onclick="closeModal('update-modal')">✕</button>
       </div>
       <div class="modal-body">
-        <div class="sub-section-card">
-          <div style="font-weight:700; color:#fff; margin-bottom:6px;" id="update-release-title">BobrDobr VPN Release</div>
-          <div style="color:var(--text-muted); font-size:12px; line-height:1.5; white-space:pre-wrap; max-height:160px; overflow-y:auto;" id="update-release-desc">Описание изменений...</div>
+        <div class="sub-section-card" style="padding: 14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-weight:700; color:#fff; font-size:13px;" id="update-release-title">Список изменений</div>
+            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.2.2</span>
+          </div>
+          <div id="update-release-desc" style="white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 12px; color: #cbd5e1; max-height: 220px; overflow-y: auto; background: rgba(10, 15, 20, 0.4); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">Описание изменений...</div>
         </div>
 
         <div id="update-progress-block" style="display:none; margin-top:14px; flex-direction:column; gap:6px;">
@@ -2718,9 +2739,14 @@
           </div>
         </div>
       </div>
-      <div class="modal-foot" style="justify-content: flex-end;">
-        <button class="btn btn-secondary" onclick="closeModal('update-modal')">Позже</button>
-        <button class="btn btn-primary" id="btn-start-update" style="background:#06b6d4;">🚀 Скачать и обновить</button>
+      <div class="modal-foot" style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" id="btn-snooze-update" title="Отложить уведомление до следующего запуска">⏰ Отложить</button>
+          <button class="btn btn-secondary" id="btn-open-github-release" title="Открыть страницу релиза на GitHub в браузере">🌐 Страница релиза</button>
+        </div>
+        <div>
+          <button class="btn btn-primary" id="btn-start-update" style="background:#06b6d4;">⬇️ Установить обновление</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2820,7 +2846,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size:11.5px; color:#fff; font-weight:700;">Версия программы:</div>
-              <div style="font-size:11px; color:var(--text-muted);">BobrDobr VPN v1.2.1 (Go Native Engine)</div>
+              <div style="font-size:11px; color:var(--text-muted);">BobrDobr VPN v1.2.2 (Go Native Engine)</div>
             </div>
             <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000); callGo('checkUpdate')">🔄 Проверить обновления</button>
           </div>
@@ -4385,7 +4411,7 @@
     }
 
     // Modern Floating Toast Notification System
-    function showToast(text, type = "info", duration = 3800) {
+    function showToast(text, type = "info", duration = 3800, actionText = null, actionCallback = null) {
       const container = document.getElementById("toast-container");
       if (!container) return;
 
@@ -4399,7 +4425,28 @@
       if (type === "success") icon = "✅";
       if (type === "error") icon = "⚠️";
       if (type === "warning") icon = "🔔";
-      toast.innerHTML = `<span style="font-size:16px; flex-shrink:0;">${icon}</span><span style="flex:1;">${escapeHtml(text)}</span>`;
+
+      const iconSpan = document.createElement("span");
+      iconSpan.style.cssText = "font-size:16px; flex-shrink:0;";
+      iconSpan.textContent = icon;
+      toast.appendChild(iconSpan);
+
+      const textSpan = document.createElement("span");
+      textSpan.style.cssText = "flex:1;";
+      textSpan.textContent = text;
+      toast.appendChild(textSpan);
+
+      if (actionText && typeof actionCallback === "function") {
+        const actionBtn = document.createElement("button");
+        actionBtn.className = "toast-action-btn";
+        actionBtn.textContent = actionText;
+        actionBtn.onclick = (e) => {
+          e.stopPropagation();
+          actionCallback();
+        };
+        toast.appendChild(actionBtn);
+      }
+
       container.appendChild(toast);
       setTimeout(() => {
         toast.style.opacity = "0";
@@ -4482,25 +4529,69 @@
 
         case "updateAvailable":
           if (data) {
+            latestUpdateVersion = data.version || "";
             latestUpdateUrl = data.download_url || "";
-            document.getElementById("app-update-badge").style.display = "inline-flex";
-            document.getElementById("update-modal-subtitle").textContent = `Доступна версия ${data.version}`;
-            document.getElementById("update-release-title").textContent = data.title || `Релиз BobrDobr VPN ${data.version}`;
-            document.getElementById("update-release-desc").textContent = data.description || "Новые функции, улучшенная маршрутизация и обновлённые сетевые драйверы.";
-            showToast(`Доступна новая версия ${data.version}!`, "success", 5000);
-            openModal("update-modal");
+            latestReleaseHtmlUrl = data.html_url || "https://github.com/Phoenix1302/BobrDobr/releases";
+
+            const badge = document.getElementById("app-update-badge");
+            if (badge) {
+              badge.textContent = `🚀 v${data.version}`;
+              badge.style.display = "inline-flex";
+            }
+
+            const title = data.title ? ` (${data.title})` : "";
+            const subTitleEl = document.getElementById("update-modal-subtitle");
+            if (subTitleEl) subTitleEl.textContent = `Доступна версия v${data.version}${title}`;
+
+            const tagEl = document.getElementById("update-release-tag");
+            if (tagEl) tagEl.textContent = `v${data.version}`;
+
+            const descEl = document.getElementById("update-release-desc");
+            if (descEl) descEl.textContent = data.description || "Новые функции, улучшенная маршрутизация и обновлённые сетевые драйверы.";
+
+            showToast(`🚀 Доступна новая версия v${data.version}!`, "success", 6000, "Подробнее", () => {
+              openModal("update-modal");
+            });
+
+            const isSnoozed = sessionStorage.getItem("snooze_update_" + data.version) === "true";
+            if (!isSnoozed) {
+              openModal("update-modal");
+            }
           }
           break;
 
         case "downloadProgress":
           if (data) {
             const pct = data.percent !== undefined ? data.percent : 0;
-            document.getElementById("update-progress-block").style.display = "flex";
-            document.getElementById("update-progress-fill").style.width = pct + "%";
-            document.getElementById("update-progress-pct").textContent = pct + "%";
+            const progressBlock = document.getElementById("update-progress-block");
+            if (progressBlock) progressBlock.style.display = "flex";
+            const fillEl = document.getElementById("update-progress-fill");
+            if (fillEl) fillEl.style.width = pct + "%";
+            const pctEl = document.getElementById("update-progress-pct");
+            if (pctEl) pctEl.textContent = pct + "%";
+            const labelEl = document.getElementById("update-progress-label");
+            if (labelEl) {
+              labelEl.textContent = pct >= 100 ? "Запуск установщика..." : "Скачивание установщика...";
+            }
             const btn = document.getElementById("btn-start-update");
-            btn.disabled = true;
-            btn.textContent = pct >= 100 ? "Запуск установки..." : `Скачивание... (${pct}%)`;
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = pct >= 100 ? "Запуск установки..." : `Скачивание... (${pct}%)`;
+            }
+          }
+          break;
+
+        case "downloadError":
+          {
+            const btn = document.getElementById("btn-start-update");
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "⬇️ Установить обновление";
+            }
+            const labelEl = document.getElementById("update-progress-label");
+            if (labelEl) labelEl.textContent = "Ошибка загрузки";
+            const errMsg = data && data.error ? data.error : "Не удалось скачать обновление";
+            showToast(`Ошибка загрузки обновления: ${errMsg}`, "error", 5000);
           }
           break;
 
@@ -4509,7 +4600,7 @@
             if (data.error) {
               showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000);
             } else {
-              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.2.1";
+              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.2.2";
               showToast(`У вас установлена актуальная версия BobrDobr VPN (${ver})`, "success", 4000);
             }
           }
@@ -4517,14 +4608,14 @@
 
         case "ready": {
           const appVerEl = document.getElementById("app-ver-badge");
-          if (appVerEl) appVerEl.textContent = "v1.2.1";
+          if (appVerEl) appVerEl.textContent = "v1.2.2";
           break;
         }
 
         case "settingsLoaded":
           {
             const appVerEl = document.getElementById("app-ver-badge");
-            if (appVerEl) appVerEl.textContent = "v1.2.1";
+            if (appVerEl) appVerEl.textContent = "v1.2.2";
           }
           if (data) {
             const elAutostart = document.getElementById("setting-autostart");
@@ -4556,16 +4647,31 @@
       }
     };
 
+    let latestUpdateVersion = "";
     let latestUpdateUrl = "";
+    let latestReleaseHtmlUrl = "https://github.com/Phoenix1302/BobrDobr/releases";
+
     document.getElementById("app-ver-badge").onclick = () => {
       showToast("Проверка обновлений на сервере...", "info", 2000);
       callGo("checkUpdate");
     };
 
+    document.getElementById("btn-snooze-update").onclick = () => {
+      if (latestUpdateVersion) {
+        sessionStorage.setItem("snooze_update_" + latestUpdateVersion, "true");
+      }
+      closeModal("update-modal");
+    };
+
+    document.getElementById("btn-open-github-release").onclick = () => {
+      callGo("openCabinet", { url: latestReleaseHtmlUrl });
+    };
+
     document.getElementById("btn-start-update").onclick = () => {
       document.getElementById("update-progress-block").style.display = "flex";
-      document.getElementById("btn-start-update").disabled = true;
-      document.getElementById("btn-start-update").textContent = "Инициализация загрузки...";
+      const btn = document.getElementById("btn-start-update");
+      btn.disabled = true;
+      btn.textContent = "Инициализация загрузки...";
       callGo("downloadUpdate", { url: latestUpdateUrl });
     };
 
@@ -4607,7 +4713,7 @@
       if (typeof window.nativeBridgeCall === "function") {
         bridgeReady = true;
         const appVerEl = document.getElementById("app-ver-badge");
-        if (appVerEl) appVerEl.textContent = "v1.2.1";
+        if (appVerEl) appVerEl.textContent = "v1.2.2";
         callGo("ready");
       } else {
         setTimeout(initBridge, 60);

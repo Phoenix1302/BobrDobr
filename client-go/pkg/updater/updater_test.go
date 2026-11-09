@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,7 @@ func TestCheckUpdate_WithMockServer(t *testing.T) {
 		TagName:     "v1.3.0",
 		Name:        "BobrDobr VPN 1.3.0",
 		Body:        "- Новая плотина\n- Оптимизация сети",
+		HTMLURL:     "https://github.com/Phoenix1302/BobrDobr/releases/tag/v1.3.0",
 		PublishedAt: "2026-11-05T20:00:00Z",
 		Assets: []struct {
 			Name               string `json:"name"`
@@ -81,6 +83,10 @@ func TestCheckUpdate_WithMockServer(t *testing.T) {
 
 	if !strings.Contains(ghRelease.Assets[0].Name, "Setup.exe") {
 		t.Fatalf("expected Setup.exe asset")
+	}
+
+	if ghRelease.HTMLURL != "https://github.com/Phoenix1302/BobrDobr/releases/tag/v1.3.0" {
+		t.Fatalf("HTMLURL mismatch, got %q", ghRelease.HTMLURL)
 	}
 }
 
@@ -153,5 +159,33 @@ func TestCheckUpdate_EndToEnd(t *testing.T) {
 	noUpdate := CompareVersions(relVersion, "1.4.0") > 0
 	if noUpdate {
 		t.Fatalf("expected no update for v1.4.0 over 1.4.0")
+	}
+}
+
+func TestCleanupOldInstallers(t *testing.T) {
+	updatesDir := GetUpdatesDir()
+	_ = os.MkdirAll(updatesDir, 0755)
+
+	f1 := filepath.Join(updatesDir, "test-old-setup.exe")
+	f2 := filepath.Join(updatesDir, "test-partial.tmp")
+	f3 := filepath.Join(updatesDir, "keep_me.txt")
+
+	_ = os.WriteFile(f1, []byte("dummy exe"), 0644)
+	_ = os.WriteFile(f2, []byte("dummy tmp"), 0644)
+	_ = os.WriteFile(f3, []byte("keep text"), 0644)
+	defer os.Remove(f3)
+
+	if err := CleanupOldInstallers(); err != nil {
+		t.Fatalf("CleanupOldInstallers failed: %v", err)
+	}
+
+	if _, err := os.Stat(f1); !os.IsNotExist(err) {
+		t.Errorf("expected %s to be removed", f1)
+	}
+	if _, err := os.Stat(f2); !os.IsNotExist(err) {
+		t.Errorf("expected %s to be removed", f2)
+	}
+	if _, err := os.Stat(f3); os.IsNotExist(err) {
+		t.Errorf("expected %s to be preserved", f3)
 	}
 }
