@@ -1,0 +1,8 @@
+# GitHub Linguist language overrides
+client-go/vendor/** linguist-vendored
+bin/** linguist-vendored
+*.syso binary
+*.cer binary
+*.crt binary
+*.pfx binary
+*.ico binary

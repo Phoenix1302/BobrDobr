@@ -171,15 +171,101 @@
       flex-shrink: 1;
     }
 
+    .beaver-logo-box {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
     .beaver-logo-img {
       width: 38px;
       height: 38px;
       flex-shrink: 0;
       filter: drop-shadow(0 2px 10px rgba(217, 119, 6, 0.35));
-      transition: transform 0.3s var(--ease-smooth);
+      transition: transform 0.25s var(--ease-smooth);
+      transform-origin: 50% 50%;
     }
-    .beaver-logo-img:hover {
-      transform: scale(1.05) rotate(-2deg);
+
+    @keyframes beaverSpinnerRotate {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .beaver-logo-img.beaver-spinning {
+      animation: beaverSpinnerRotate 0.65s linear infinite !important;
+      filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.85)) !important;
+    }
+
+    @keyframes beaverHeartBounce {
+      0% { transform: scale(1); }
+      30% { transform: scale(0.82) rotate(-8deg); }
+      60% { transform: scale(1.25) rotate(6deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    .beaver-logo-img.beaver-bounce {
+      animation: beaverHeartBounce 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .easter-particle-layer {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .poop-particle {
+      position: absolute;
+      font-size: 21px;
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+      transform: translate(-50%, -50%);
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55));
+      will-change: transform, opacity;
+    }
+
+    .big-poop-particle {
+      position: absolute;
+      font-size: 26px;
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+      transform: translate(-50%, -50%);
+      filter: drop-shadow(0 4px 18px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(139, 90, 43, 0.5));
+      z-index: 10001;
+      will-change: transform, opacity;
+    }
+
+    .heart-particle {
+      position: absolute;
+      font-size: 16px;
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+      transform: translate(-50%, -50%);
+      filter: drop-shadow(0 2px 8px rgba(244, 63, 94, 0.6));
+      will-change: transform, opacity;
+    }
+
+    .big-heart-particle {
+      position: absolute;
+      font-size: 58px;
+      line-height: 1;
+      pointer-events: none;
+      user-select: none;
+      transform: translate(-50%, -50%);
+      filter: drop-shadow(0 0 18px #f43f5e) drop-shadow(0 0 35px rgba(244, 63, 94, 0.85));
+      will-change: transform, opacity;
     }
 
     .brand-text-col {
@@ -638,6 +724,27 @@
       margin: auto 0;
     }
 
+    @property --beam-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+    @property --beam-color {
+      syntax: '<color>';
+      initial-value: #f59e0b;
+      inherits: false;
+    }
+    @property --beam-tail {
+      syntax: '<color>';
+      initial-value: rgba(245, 158, 11, 0.2);
+      inherits: false;
+    }
+    @property --beam-spark {
+      syntax: '<color>';
+      initial-value: #fde68a;
+      inherits: false;
+    }
+
     /* Profile Card with Smooth Flat Micro-Interactions (Zero Vertical Translation) */
     .vpn-profile-card {
       background: linear-gradient(180deg, #162228 0%, #10181d 100%);
@@ -654,6 +761,149 @@
                   background 0.2s var(--ease-smooth);
       position: relative;
       cursor: pointer;
+      --beam-color: #f59e0b;
+      --beam-tail: rgba(245, 158, 11, 0.2);
+      --beam-spark: #fde68a;
+    }
+
+    /* 1. The Running Neon Ribbon on ::after (Hardware-Accelerated CSS) */
+    .vpn-profile-card::after {
+      content: "";
+      position: absolute;
+      inset: -1.5px;
+      border-radius: 13.5px;
+      padding: 2px;
+      background: conic-gradient(
+        from var(--beam-angle, 0deg),
+        transparent 0deg,
+        transparent 270deg,
+        var(--beam-tail) 295deg,
+        var(--beam-color) 330deg,
+        var(--beam-spark) 352deg,
+        #ffffff 360deg
+      );
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 4;
+      filter: drop-shadow(0 0 5px var(--beam-color)) drop-shadow(0 0 10px var(--beam-tail));
+      transition: --beam-color 0.45s ease,
+                  --beam-tail 0.45s ease,
+                  --beam-spark 0.45s ease,
+                  opacity 0.25s var(--ease-smooth);
+    }
+
+    .vpn-profile-card.card-ribbon-emerald::after {
+      --beam-color: #10b981;
+      --beam-tail: rgba(16, 185, 129, 0.25);
+      --beam-spark: #a7f3d0;
+    }
+
+    @keyframes beamSpin {
+      0% {
+        --beam-angle: 0deg;
+      }
+      100% {
+        --beam-angle: 360deg;
+      }
+    }
+
+    @keyframes ribbonSweepCycle {
+      0% {
+        --beam-angle: 0deg;
+        opacity: 0;
+      }
+      4% {
+        opacity: 1;
+      }
+      94% {
+        opacity: 1;
+      }
+      100% {
+        --beam-angle: 360deg;
+        opacity: 0;
+      }
+    }
+
+    /* While Connecting: Continuous Amber Beam Rotation with NO static glow around card */
+    .vpn-profile-card.tunnel-connecting,
+    .vpn-profile-card.active-connecting {
+      border: 1px solid var(--border-subtle) !important;
+      border-top: 1px solid var(--border-medium) !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45) !important;
+      --beam-color: #f59e0b;
+      --beam-tail: rgba(245, 158, 11, 0.2);
+      --beam-spark: #fde68a;
+    }
+    .vpn-profile-card.tunnel-connecting::after,
+    .vpn-profile-card.active-connecting::after {
+      opacity: 1 !important;
+      animation: beamSpin 1.2s linear infinite !important;
+    }
+
+    /* Transitioning to Connected: In flight color change to Emerald (same animation continues!) */
+    .vpn-profile-card.tunnel-transition-connected {
+      border: 1px solid var(--border-subtle) !important;
+      border-top: 1px solid var(--border-medium) !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45) !important;
+      --beam-color: #10b981 !important;
+      --beam-tail: rgba(16, 185, 129, 0.25) !important;
+      --beam-spark: #a7f3d0 !important;
+    }
+    .vpn-profile-card.tunnel-transition-connected::after {
+      opacity: 1 !important;
+    }
+
+    /* While ribbon is running: Card MUST NOT have static surrounding neon glow! */
+    .vpn-profile-card.card-running-ribbon {
+      border-color: var(--border-subtle) !important;
+      border-top-color: var(--border-medium) !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .vpn-profile-card.card-running-ribbon::after {
+      animation: ribbonSweepCycle 1.05s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    }
+
+    /* When ribbon finishes its 360° loop: Full neon ободок smoothly blooms into power */
+    .vpn-profile-card.card-neon-ignited {
+      animation: neonBorderIgniteAmber 0.45s var(--ease-smooth);
+    }
+
+    @keyframes neonBorderIgniteAmber {
+      0% {
+        box-shadow: 0 0 0 rgba(245, 158, 11, 0);
+        border-color: var(--border-subtle);
+      }
+      45% {
+        box-shadow: 0 0 24px rgba(245, 158, 11, 0.75), 0 0 8px #f59e0b;
+        border-color: #fde68a;
+      }
+      100% {
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-amber-glow);
+        border-color: var(--neon-amber-border);
+      }
+    }
+
+    .vpn-profile-card.card-neon-ignited-emerald {
+      animation: neonBorderIgniteEmerald 0.45s var(--ease-smooth);
+    }
+
+    @keyframes neonBorderIgniteEmerald {
+      0% {
+        box-shadow: 0 0 0 rgba(16, 185, 129, 0);
+        border-color: var(--border-subtle);
+      }
+      45% {
+        box-shadow: 0 0 24px rgba(16, 185, 129, 0.75), 0 0 8px #10b981;
+        border-color: #a7f3d0;
+      }
+      100% {
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-emerald-glow);
+        border-color: var(--neon-emerald-border);
+      }
     }
 
     .vpn-profile-card:hover {
@@ -664,15 +914,13 @@
     }
 
     .vpn-profile-card.active-connected {
-      border: 1px solid var(--neon-emerald-border);
-      border-top: 1px solid #6ee7b7;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-emerald-glow);
+      border: 1px solid var(--neon-emerald-border) !important;
+      border-top: 1px solid #6ee7b7 !important;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-emerald-glow) !important;
     }
-
-    .vpn-profile-card.active-connecting {
-      border: 1px solid var(--neon-amber-border);
-      border-top: 1px solid #fde68a;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-amber-glow);
+    .vpn-profile-card.active-connected::after {
+      opacity: 0 !important;
+      animation: none !important;
     }
 
     .vpn-profile-card.active-error {
@@ -1759,6 +2007,37 @@
       background: #060a0c;
       box-shadow: var(--neon-purple-glow);
     }
+    .sub-url-input.readonly-copyable {
+      cursor: pointer;
+    }
+    .sub-url-input.readonly-copyable:hover {
+      border-color: #38bdf8;
+      background: #0c161d;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+    .sub-url-input.copied-flash {
+      border-color: #10b981 !important;
+      background: #0b1a15 !important;
+      color: #a7f3d0 !important;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.4) !important;
+    }
+
+    .btn-icon-sub {
+      width: 36px;
+      height: 34px;
+      padding: 0 !important;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.2s var(--ease-smooth);
+    }
+    .btn-icon-sub:hover {
+      transform: translateY(-1px);
+    }
 
     .sub-profiles-list {
       display: flex;
@@ -2385,28 +2664,31 @@
     <header class="app-header">
       <div class="header-left">
         <div class="brand-badge-group">
-          <!-- Hydro Beaver Vector Logo -->
-          <svg class="beaver-logo-img" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <ellipse cx="14" cy="40" rx="13" ry="7" fill="#4a2810" transform="rotate(-15 14 40)"/>
-            <path d="M6 37 Q14 40 22 43 M7 43 Q14 40 21 37" stroke="#2e1505" stroke-width="1.5" fill="none"/>
-            <ellipse cx="36" cy="38" rx="20" ry="16" fill="#8b5a2b"/>
-            <ellipse cx="38" cy="40" rx="14" ry="10" fill="#a67242"/>
-            <circle cx="44" cy="24" r="13" fill="#8b5a2b"/>
-            <circle cx="41" cy="13" r="4.5" fill="#4a2810"/>
-            <circle cx="41" cy="13" r="2.2" fill="#a67242"/>
-            <ellipse cx="50" cy="26" rx="6.5" ry="5" fill="#d4a373"/>
-            <ellipse cx="52" cy="23.5" rx="3" ry="2" fill="#1f140e"/>
-            <rect x="49" y="30" width="2.6" height="4" rx="0.5" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.3"/>
-            <rect x="52.2" y="30" width="2.6" height="4" rx="0.5" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.3"/>
-            <circle cx="46" cy="20.5" r="2.2" fill="#1a1a1a"/>
-            <circle cx="46.8" cy="19.7" r="0.8" fill="#ffffff"/>
-            <ellipse cx="46" cy="48" rx="5.5" ry="3.5" fill="#4a2810"/>
-            <ellipse cx="28" cy="48" rx="5.5" ry="3.5" fill="#4a2810"/>
-          </svg>
+          <!-- Hydro Beaver Vector Logo Box with Easter Egg Layer -->
+          <div class="beaver-logo-box" id="easter-beaver-box" title="БобрДобр VPN">
+            <svg class="beaver-logo-img" id="easter-beaver-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="14" cy="40" rx="13" ry="7" fill="#4a2810" transform="rotate(-15 14 40)"/>
+              <path d="M6 37 Q14 40 22 43 M7 43 Q14 40 21 37" stroke="#2e1505" stroke-width="1.5" fill="none"/>
+              <ellipse cx="36" cy="38" rx="20" ry="16" fill="#8b5a2b"/>
+              <ellipse cx="38" cy="40" rx="14" ry="10" fill="#a67242"/>
+              <circle cx="44" cy="24" r="13" fill="#8b5a2b"/>
+              <circle cx="41" cy="13" r="4.5" fill="#4a2810"/>
+              <circle cx="41" cy="13" r="2.2" fill="#a67242"/>
+              <ellipse cx="50" cy="26" rx="6.5" ry="5" fill="#d4a373"/>
+              <ellipse cx="52" cy="23.5" rx="3" ry="2" fill="#1f140e"/>
+              <rect x="49" y="30" width="2.6" height="4" rx="0.5" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.3"/>
+              <rect x="52.2" y="30" width="2.6" height="4" rx="0.5" fill="#ffffff" stroke="#e0e0e0" stroke-width="0.3"/>
+              <circle cx="46" cy="20.5" r="2.2" fill="#1a1a1a"/>
+              <circle cx="46.8" cy="19.7" r="0.8" fill="#ffffff"/>
+              <ellipse cx="46" cy="48" rx="5.5" ry="3.5" fill="#4a2810"/>
+              <ellipse cx="28" cy="48" rx="5.5" ry="3.5" fill="#4a2810"/>
+            </svg>
+            <div class="easter-particle-layer" id="easter-particle-layer"></div>
+          </div>
           <div class="brand-text-col">
             <div class="brand-title-row">
               <span class="brand-name">БобрДобр VPN</span>
-              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.3.0</span>
+              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.3.1</span>
               <span class="update-badge" id="app-update-badge" style="display:none;" onclick="openModal('update-modal')">🚀 Обновление</span>
             </div>
           </div>
@@ -2486,7 +2768,7 @@
       </div>
       <div class="logs-content" id="logs-console">
         <div class="log-row" data-tag="БОБР">
-          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема БобрДобр VPN v1.3.0 готова к работе.
+          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема БобрДобр VPN v1.3.1 готова к работе.
         </div>
       </div>
       <div class="logs-empty-state" id="logs-empty-filter" style="display:none;">
@@ -2585,8 +2867,11 @@
           <div class="sub-url-box">
             <span class="sub-url-label">🔗 Ссылка подписки:</span>
             <div class="sub-url-input-row">
-              <input type="text" class="sub-url-input" id="sub-modal-input" placeholder="https://vpn.example.com/api/v1/sub/...">
-              <button class="btn btn-secondary" id="btn-copy-sub-url">📋 Скопировать</button>
+              <input type="text" class="sub-url-input readonly-copyable" id="sub-modal-input" readonly title="Нажмите, чтобы скопировать ссылку в буфер обмена">
+              <button class="btn btn-secondary btn-icon-sub" id="btn-copy-sub-url" title="Скопировать ссылку в буфер обмена">📋</button>
+              <button class="btn btn-secondary btn-icon-sub" id="btn-edit-sub-url" title="Редактировать ссылку подписки">✏️</button>
+              <button class="btn btn-primary btn-icon-sub" id="btn-save-sub-url" title="Сохранить и обновить подписку" style="display:none; background: linear-gradient(135deg, #10b981, #059669); border-color: #34d399;">✔️</button>
+              <button class="btn btn-secondary btn-icon-sub" id="btn-cancel-sub-url" title="Отменить редактирование" style="display:none;">✕</button>
             </div>
           </div>
         </div>
@@ -3181,7 +3466,7 @@
         <div class="sub-section-card" style="padding: 14px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="font-weight:700; color:#fff; font-size:13px;" id="update-release-title">Список изменений</div>
-            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.3.0</span>
+            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.3.1</span>
           </div>
           <div id="update-release-desc" style="white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 12px; color: #cbd5e1; max-height: 220px; overflow-y: auto; background: rgba(10, 15, 20, 0.4); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">Описание изменений...</div>
         </div>
@@ -3310,7 +3595,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size:11.5px; color:#fff; font-weight:700;">Версия программы:</div>
-              <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.0 (Go Native Engine)</div>
+              <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.1 (Go Native Engine)</div>
             </div>
             <button class="btn btn-xs" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000, null, null, 'update'); callGo('checkUpdate')">🔄 Проверить обновления</button>
           </div>
@@ -3403,6 +3688,9 @@
     function closeModal(id) {
       const el = document.getElementById(id);
       if (el) el.classList.remove("open");
+      if (id === "sub-modal" && typeof setSubModalEditMode === "function") {
+        setSubModalEditMode(false);
+      }
     }
 
     // =========================================================
@@ -3489,20 +3777,69 @@
       }
     });
 
+    function hasActiveSubscription() {
+      const hasUrl = Boolean(appState.subscription && appState.subscription.url && appState.subscription.url.trim().length > 0);
+      const hasProfiles = Boolean(appState.profiles && appState.profiles.some(isSubscriptionProfile));
+      return hasUrl || hasProfiles;
+    }
+
+    let isSubModalEditing = false;
+    function setSubModalEditMode(isEdit) {
+      isSubModalEditing = isEdit;
+      const input = document.getElementById("sub-modal-input");
+      const btnCopy = document.getElementById("btn-copy-sub-url");
+      const btnEdit = document.getElementById("btn-edit-sub-url");
+      const btnSave = document.getElementById("btn-save-sub-url");
+      const btnCancel = document.getElementById("btn-cancel-sub-url");
+
+      if (!input) return;
+
+      if (isEdit) {
+        input.readOnly = false;
+        input.classList.remove("readonly-copyable");
+        input.title = "Вставьте или отредактируйте ссылку на подписку";
+        if (btnCopy) btnCopy.style.display = "none";
+        if (btnEdit) btnEdit.style.display = "none";
+        if (btnSave) btnSave.style.display = "inline-flex";
+        if (btnCancel) btnCancel.style.display = "inline-flex";
+        input.focus();
+        input.select();
+      } else {
+        input.readOnly = true;
+        input.classList.add("readonly-copyable");
+        input.title = "Нажмите, чтобы скопировать ссылку в буфер обмена";
+        if (btnCopy) btnCopy.style.display = "inline-flex";
+        if (btnEdit) btnEdit.style.display = "inline-flex";
+        if (btnSave) btnSave.style.display = "none";
+        if (btnCancel) btnCancel.style.display = "none";
+      }
+    }
+
     // Toolbar Triggers
     document.getElementById("btn-open-subscription").onclick = () => {
-      if (appState.subscription) {
-        const inputEl = document.getElementById("sub-modal-input");
-        if (inputEl) inputEl.value = appState.subscription.url || "";
-        const expiresEl = document.getElementById("sub-param-expires");
-        if (expiresEl) expiresEl.textContent = formatExpiresAt(appState.subscription.expires_at);
-        const syncEl = document.getElementById("sub-param-sync");
-        if (syncEl) syncEl.textContent = formatLastSync(appState.subscription.last_sync);
-        const userEl = document.getElementById("sub-param-user");
-        if (userEl) userEl.textContent = appState.subscription.username || "—";
-        const serverEl = document.getElementById("sub-param-server");
-        if (serverEl) serverEl.textContent = appState.subscription.server || "vpn.example.com";
+      if (!hasActiveSubscription()) {
+        resetAddModal();
+        setAddConnectionType('subscription');
+        openModal("add-profile-modal");
+        setTimeout(() => {
+          const urlInput = document.getElementById("new-sub-url");
+          if (urlInput) urlInput.focus();
+        }, 60);
+        return;
       }
+
+      setSubModalEditMode(false);
+      const inputEl = document.getElementById("sub-modal-input");
+      if (inputEl) inputEl.value = (appState.subscription && appState.subscription.url) || "";
+      const expiresEl = document.getElementById("sub-param-expires");
+      if (expiresEl && appState.subscription) expiresEl.textContent = formatExpiresAt(appState.subscription.expires_at);
+      const syncEl = document.getElementById("sub-param-sync");
+      if (syncEl && appState.subscription) syncEl.textContent = formatLastSync(appState.subscription.last_sync);
+      const userEl = document.getElementById("sub-param-user");
+      if (userEl && appState.subscription) userEl.textContent = appState.subscription.username || "—";
+      const serverEl = document.getElementById("sub-param-server");
+      if (serverEl && appState.subscription) serverEl.textContent = appState.subscription.server || "vpn.example.com";
+
       populateSubscriptionModal();
       openModal("sub-modal");
     };
@@ -3542,12 +3879,76 @@
       }
     }
 
-    // Copy Sub URL
+    // Copy Sub URL via button
     document.getElementById("btn-copy-sub-url").onclick = function() {
       const input = document.getElementById("sub-modal-input");
       if (input && input.value) {
         copyText(input.value, this);
+        input.classList.add("copied-flash");
+        setTimeout(() => { input.classList.remove("copied-flash"); }, 600);
+        showToast("Ссылка подписки скопирована", "info", 1800, null, null, "subscription", null, "📋");
       }
+    };
+
+    // Sub URL input click to copy when in view mode
+    const subModalInput = document.getElementById("sub-modal-input");
+    if (subModalInput) {
+      subModalInput.addEventListener("click", function() {
+        if (!isSubModalEditing && this.value && this.value.trim().length > 0) {
+          copyText(this.value);
+          this.classList.add("copied-flash");
+          setTimeout(() => { this.classList.remove("copied-flash"); }, 600);
+          showToast("Ссылка подписки скопирована в буфер обмена", "info", 1800, null, null, "subscription", null, "📋");
+        }
+      });
+      subModalInput.addEventListener("keydown", function(e) {
+        if (isSubModalEditing) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("btn-save-sub-url").click();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            document.getElementById("btn-cancel-sub-url").click();
+          }
+        }
+      });
+    }
+
+    // Edit Sub URL
+    document.getElementById("btn-edit-sub-url").onclick = function() {
+      setSubModalEditMode(true);
+    };
+
+    // Cancel editing Sub URL
+    document.getElementById("btn-cancel-sub-url").onclick = function() {
+      const input = document.getElementById("sub-modal-input");
+      if (input) {
+        input.value = (appState.subscription && appState.subscription.url) || "";
+      }
+      setSubModalEditMode(false);
+    };
+
+    // Save edited Sub URL and sync
+    document.getElementById("btn-save-sub-url").onclick = function() {
+      const input = document.getElementById("sub-modal-input");
+      if (!input) return;
+      const newUrl = input.value.trim();
+      if (!newUrl) {
+        showToast("Укажите ссылку на подписку", "error", 3000, null, null, "subscription");
+        input.focus();
+        return;
+      }
+      if (!newUrl.startsWith("http://") && !newUrl.startsWith("https://")) {
+        showToast("Ссылка должна начинаться с http:// или https://", "error", 3000, null, null, "subscription");
+        input.focus();
+        return;
+      }
+
+      if (!appState.subscription) appState.subscription = {};
+      appState.subscription.url = newUrl;
+      setSubModalEditMode(false);
+      showToast("Обновление конфигураций подписки...", "info", 3000, null, null, "subscription", null, "🔄");
+      callGo("syncSubscription", { url: newUrl });
     };
 
     // Save Settings
@@ -4770,6 +5171,41 @@
       renderProfiles(appState.profiles, appState.activeProfileId);
     });
 
+    let connectingStartTime = 0;
+    let connectingFinishTimeout = null;
+    const LOOP_DURATION = 1200; // 1.2s per circuit
+
+    // Running neon ribbon trigger: ribbon runs around border with NO surrounding glow, then the full neon ободок ignites!
+    function triggerCardRibbon(cardEl, mode = "amber", onComplete = null) {
+      if (!cardEl) return;
+      cardEl.classList.remove("card-running-ribbon", "card-ribbon-emerald", "card-neon-ignited", "card-neon-ignited-emerald");
+      void cardEl.offsetWidth; // Force reflow to restart CSS keyframe animation
+
+      if (mode === "emerald") {
+        cardEl.classList.add("card-ribbon-emerald");
+      }
+      cardEl.classList.add("card-running-ribbon");
+
+      setTimeout(() => {
+        if (!cardEl) return;
+        cardEl.classList.remove("card-running-ribbon", "card-ribbon-emerald");
+        if (mode === "emerald") {
+          cardEl.classList.add("card-neon-ignited-emerald");
+        } else {
+          cardEl.classList.add("card-neon-ignited");
+        }
+        if (typeof onComplete === "function") {
+          onComplete();
+        }
+        setTimeout(() => {
+          if (cardEl) {
+            cardEl.classList.remove("card-neon-ignited", "card-neon-ignited-emerald");
+          }
+        }, 500);
+      }, 1050);
+    }
+    const triggerCardSweep = triggerCardRibbon;
+
     function renderProfiles(profiles, activeId) {
       const container = document.getElementById("profile-list-container");
       container.innerHTML = "";
@@ -4851,7 +5287,10 @@
           btnText = "Отключить";
           btnClass = "btn-disconnect";
         } else if (isConnecting) {
-          cardActiveStateClass = "active-connecting";
+          cardActiveStateClass = "tunnel-connecting";
+          if (!connectingStartTime) {
+            connectingStartTime = performance.now();
+          }
           statusBadgeText = "⏳ Подключение...";
           statusBadgeClass = "connecting";
           btnText = "Подключение...";
@@ -4891,6 +5330,7 @@
         // Main Card Element
         const card = document.createElement("div");
         card.className = `vpn-profile-card ${cardActiveStateClass}${cardFrozenClass}`;
+        card.dataset.profileId = p.id;
         card.innerHTML = `
           <div class="card-top-row">
             <div class="card-title-group">
@@ -4925,6 +5365,7 @@
         `;
 
         card.onclick = () => {
+          triggerCardRibbon(card, isConnected ? "emerald" : "amber");
           callGo("selectProfile", { id: p.id });
         };
 
@@ -4945,6 +5386,7 @@
     // Toggle Connect/Disconnect Button Handler
     function handleToggleClick(id) {
       if (appState.status === "connected" && appState.activeProfileId === id) {
+        clearTimeout(connectingFinishTimeout);
         updateDockState("connecting", "Остановка гидротурбины...", "");
         const curProf = (appState.profiles || []).find(x => x.id === id);
         const name = curProf ? curProf.name : "VPN";
@@ -4975,6 +5417,8 @@
         }
       }
 
+      connectingStartTime = performance.now();
+      clearTimeout(connectingFinishTimeout);
       appState.status = "connecting";
       appState.activeProfileId = id;
       if (p && p.protocol) {
@@ -5662,30 +6106,77 @@
             appState.activeProto = activeProf.protocol;
           }
           updateDockState(appState.status, data.message, activeProf ? activeProf.name : "", data.adapter, appState.activeProtocol);
-          renderProfiles(appState.profiles, appState.activeProfileId);
 
           const profName = activeProf ? activeProf.name : (data.profile || "VPN");
 
-          // Surface sleek GUI toast notifications for connection state transitions
+          // Surface sleek GUI toast notifications and handle seamless running neon transition
           if (appState.status === "connected") {
+            const activeCard = document.querySelector(`.vpn-profile-card[data-profile-id="${appState.activeProfileId}"]`);
+            if (activeCard && (activeCard.classList.contains("tunnel-connecting") || activeCard.classList.contains("active-connecting"))) {
+              // 1. Seamless in-flight color switch to Emerald (animation does NOT restart from 0°!)
+              activeCard.classList.remove("active-connecting");
+              activeCard.classList.add("tunnel-transition-connected");
+
+              // 2. Calculate remaining time for the beam to finish the current circuit (to 360°)
+              const elapsed = (performance.now() - connectingStartTime) % LOOP_DURATION;
+              let remaining = LOOP_DURATION - elapsed;
+              if (remaining < 350) {
+                // If practically at the end, give it one full cycle to visibly complete the green circuit
+                remaining += LOOP_DURATION;
+              }
+
+              // Update badge and button text in place smoothly without wiping DOM
+              const badge = activeCard.querySelector(".card-status-badge");
+              if (badge) {
+                badge.textContent = "● Подключение...";
+                badge.className = "card-status-badge connected";
+              }
+              const btn = activeCard.querySelector(".btn");
+              if (btn) {
+                btn.textContent = "Отключить";
+                btn.className = "btn btn-disconnect";
+              }
+
+              clearTimeout(connectingFinishTimeout);
+              connectingFinishTimeout = setTimeout(() => {
+                activeCard.classList.remove("tunnel-connecting", "tunnel-transition-connected");
+                activeCard.classList.add("active-connected", "card-neon-ignited-emerald");
+                if (badge) {
+                  badge.textContent = "● Подключено";
+                }
+                renderProfiles(appState.profiles, appState.activeProfileId);
+              }, remaining);
+            } else {
+              renderProfiles(appState.profiles, appState.activeProfileId);
+              const card = document.querySelector(`.vpn-profile-card[data-profile-id="${appState.activeProfileId}"]`);
+              if (card) {
+                card.classList.add("active-connected", "card-neon-ignited-emerald");
+              }
+            }
+
             if (prevStatus !== "connected") {
               const html = `<span style="color:#10b981; font-weight:600;">Подключено:</span> <span style="font-weight:600; color:#f8fafc;">${escapeHtml(profName)}</span>`;
               showToast(`Подключено: ${profName}`, "success", 2600, null, null, "tunnel", html, "✅");
             }
-          } else if (appState.status === "disconnected") {
-            // Only show disconnect toast if transitioning from an active or connecting session
-            if (prevStatus === "connected" || prevStatus === "connecting") {
-              const isSubEnforcement = data.message && (data.message.includes("заблокирован") || data.message.includes("истёк") || data.message.includes("токен"));
-              if (!isSubEnforcement) {
-                const msg = data.message || `Отключено: ${profName}`;
-                const html = `<span style="color:#94a3b8; font-weight:600;">Отключено:</span> <span style="color:#cbd5e1;">${escapeHtml(profName)}</span>`;
-                showToast(msg, "disconnected", 2400, null, null, "tunnel", html, "⚪");
+          } else {
+            clearTimeout(connectingFinishTimeout);
+            renderProfiles(appState.profiles, appState.activeProfileId);
+
+            if (appState.status === "disconnected") {
+              // Only show disconnect toast if transitioning from an active or connecting session
+              if (prevStatus === "connected" || prevStatus === "connecting") {
+                const isSubEnforcement = data.message && (data.message.includes("заблокирован") || data.message.includes("истёк") || data.message.includes("токен"));
+                if (!isSubEnforcement) {
+                  const msg = data.message || `Отключено: ${profName}`;
+                  const html = `<span style="color:#94a3b8; font-weight:600;">Отключено:</span> <span style="color:#cbd5e1;">${escapeHtml(profName)}</span>`;
+                  showToast(msg, "disconnected", 2400, null, null, "tunnel", html, "⚪");
+                }
               }
+            } else if (appState.status === "error") {
+              const errMsg = data.message || "Не удалось установить соединение";
+              const html = `<span style="color:#ef4444; font-weight:600;">Ошибка:</span> <span style="color:#f8fafc;">${escapeHtml(errMsg)}</span>`;
+              showToast(`Ошибка: ${errMsg}`, "error", 3500, null, null, "tunnel", html, "⚠️");
             }
-          } else if (appState.status === "error") {
-            const errMsg = data.message || "Не удалось установить соединение";
-            const html = `<span style="color:#ef4444; font-weight:600;">Ошибка:</span> <span style="color:#f8fafc;">${escapeHtml(errMsg)}</span>`;
-            showToast(`Ошибка: ${errMsg}`, "error", 3500, null, null, "tunnel", html, "⚠️");
           }
           break;
         }
@@ -5887,7 +6378,7 @@
             if (data.error) {
               showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000, null, null, "update");
             } else {
-              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.3.0";
+              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.3.1";
               showToast(`У вас установлена актуальная версия БобрДобр VPN (${ver})`, "success", 4000, null, null, "update");
             }
           }
@@ -5895,14 +6386,14 @@
 
         case "ready": {
           const appVerEl = document.getElementById("app-ver-badge");
-          if (appVerEl) appVerEl.textContent = "v1.3.0";
+          if (appVerEl) appVerEl.textContent = "v1.3.1";
           break;
         }
 
         case "settingsLoaded":
           {
             const appVerEl = document.getElementById("app-ver-badge");
-            if (appVerEl) appVerEl.textContent = "v1.3.0";
+            if (appVerEl) appVerEl.textContent = "v1.3.1";
           }
           if (data) {
             appState.settings = data;
@@ -6026,10 +6517,260 @@
       if (typeof window.nativeBridgeCall === "function") {
         bridgeReady = true;
         const appVerEl = document.getElementById("app-ver-badge");
-        if (appVerEl) appVerEl.textContent = "v1.3.0";
+        if (appVerEl) appVerEl.textContent = "v1.3.1";
         callGo("ready");
       } else {
         setTimeout(initBridge, 60);
+      }
+    }
+
+    // Easter Egg: Beaver Spinner & Poop Particles + Love Hearts Combo
+    function initBeaverEasterEgg() {
+      const box = document.getElementById("easter-beaver-box");
+      const svg = document.getElementById("easter-beaver-svg");
+      const layer = document.getElementById("easter-particle-layer");
+      if (!box || !svg || !layer) return;
+
+      let hoverTimer = null;
+      let poopInterval = null;
+      let isSpinning = false;
+      let clickCount = 0;
+      let clickResetTimer = null;
+      let heartsBlockedUntil = 0;
+      let isBigHeartPlaying = false;
+
+      // 1. Hover Hold Easter Egg (1.35s hold -> Slower Spinner 0.65s + Poop Particles)
+      box.addEventListener("mouseenter", () => {
+        scheduleHoverCheck();
+      });
+
+      box.addEventListener("mouseleave", () => {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+        stopSpinnerPoop();
+      });
+
+      function scheduleHoverCheck() {
+        clearTimeout(hoverTimer);
+        const now = Date.now();
+        const waitMs = Math.max(0, heartsBlockedUntil - now);
+        // Requires holding cursor 1.35s; if hearts were recently active, wait until heart block expires + 1.35s
+        hoverTimer = setTimeout(() => {
+          if (Date.now() >= heartsBlockedUntil) {
+            startSpinnerPoop();
+          }
+        }, waitMs + 1350);
+      }
+
+      let poopSpawnCount = 0;
+
+      function startSpinnerPoop() {
+        if (isSpinning || Date.now() < heartsBlockedUntil) return;
+        isSpinning = true;
+        poopSpawnCount = 0;
+        svg.classList.add("beaver-spinning");
+
+        // Spawn first particle immediately, then continuously with relaxed rhythm (230ms) matching 0.65s rotation
+        spawnPoop();
+        poopInterval = setInterval(spawnPoop, 230);
+      }
+
+      function stopSpinnerPoop() {
+        if (!isSpinning && !hoverTimer) return;
+        isSpinning = false;
+        clearInterval(poopInterval);
+        poopInterval = null;
+        svg.classList.remove("beaver-spinning");
+        // Instantly wipe only flying poop particles, preserving hearts in flight!
+        layer.querySelectorAll(".poop-particle, .big-poop-particle").forEach(el => el.remove());
+      }
+
+      function spawnPoop() {
+        if (!isSpinning || Date.now() < heartsBlockedUntil) {
+          stopSpinnerPoop();
+          return;
+        }
+
+        poopSpawnCount++;
+
+        // Occasionally spawn a BIG poop flying right at the user's face (every ~6-8 spawns or 18% chance)
+        if (poopSpawnCount > 1 && (poopSpawnCount % 7 === 0 || Math.random() < 0.16)) {
+          spawnBigPoopInFace();
+        }
+
+        const poop = document.createElement("span");
+        poop.className = "poop-particle";
+        poop.textContent = "💩";
+
+        // Radial dispersion around spinning beaver
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 34 + Math.random() * 48; // distance 34px - 82px
+        const tx = Math.cos(angle) * dist;
+        const ty = Math.sin(angle) * dist + 12; // gentle downward gravity
+        const rot = (Math.random() - 0.5) * 220;
+
+        layer.appendChild(poop);
+
+        const anim = poop.animate([
+          { transform: "translate(-50%, -50%) scale(0.35) rotate(0deg)", opacity: 1 },
+          { transform: `translate(calc(-50% + ${tx * 0.55}px), calc(-50% + ${ty * 0.55}px)) scale(1.1) rotate(${rot * 0.5}deg)`, opacity: 0.95, offset: 0.5 },
+          { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0.7) rotate(${rot}deg)`, opacity: 0 }
+        ], {
+          duration: 700,
+          easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)"
+        });
+
+        anim.onfinish = () => {
+          if (poop.parentNode === layer) {
+            poop.remove();
+          }
+        };
+      }
+
+      // Big poop zooming straight from center towards the user's face
+      function spawnBigPoopInFace() {
+        if (!isSpinning || Date.now() < heartsBlockedUntil) return;
+
+        const bigPoop = document.createElement("div");
+        bigPoop.className = "big-poop-particle";
+        bigPoop.textContent = "💩";
+
+        // Slight natural drift wobble
+        const wobbleX = (Math.random() - 0.5) * 24;
+        const wobbleY = (Math.random() - 0.5) * 24;
+        const rot = (Math.random() - 0.5) * 45;
+
+        layer.appendChild(bigPoop);
+
+        const anim = bigPoop.animate([
+          { transform: "translate(-50%, -50%) scale(0.2) rotate(0deg)", opacity: 0 },
+          { transform: "translate(-50%, -50%) scale(1.1) rotate(0deg)", opacity: 1, offset: 0.25 },
+          { transform: `translate(calc(-50% + ${wobbleX * 0.5}px), calc(-50% + ${wobbleY * 0.5}px)) scale(2.2) rotate(${rot * 0.5}deg)`, opacity: 0.95, offset: 0.65 },
+          { transform: `translate(calc(-50% + ${wobbleX}px), calc(-50% + ${wobbleY}px)) scale(3.6) rotate(${rot}deg)`, opacity: 0, offset: 1.0 }
+        ], {
+          duration: 900,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)"
+        });
+
+        anim.onfinish = () => {
+          if (bigPoop.parentNode === layer) {
+            bigPoop.remove();
+          }
+        };
+      }
+
+      // 2. Click Easter Egg (Hearts + Big Heart Combo)
+      box.addEventListener("click", () => {
+        // Stop and block poop animation immediately when hearts are triggered!
+        stopSpinnerPoop();
+        clearTimeout(hoverTimer);
+
+        // Block poop animation for at least 3000ms after heart click
+        heartsBlockedUntil = Math.max(heartsBlockedUntil, Date.now() + 3000);
+
+        // If big heart is currently animating, clicks must NOT reset or interrupt it
+        if (isBigHeartPlaying) {
+          spawnHearts();
+          return;
+        }
+
+        svg.classList.remove("beaver-bounce");
+        void svg.offsetWidth;
+        svg.classList.add("beaver-bounce");
+
+        clickCount++;
+        clearTimeout(clickResetTimer);
+        clickResetTimer = setTimeout(() => {
+          clickCount = 0;
+        }, 2200);
+
+        if (clickCount >= 6) {
+          clickCount = 0;
+          // Big heart extends the lock duration
+          heartsBlockedUntil = Date.now() + 3800;
+          spawnBigHeart();
+        } else {
+          spawnHearts();
+        }
+      });
+
+      function spawnHearts() {
+        const heartIcons = ["❤️", "💖", "💕", "💓", "💘", "🥰"];
+        const count = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < count; i++) {
+          const heart = document.createElement("span");
+          heart.className = "heart-particle";
+          heart.textContent = heartIcons[Math.floor(Math.random() * heartIcons.length)];
+
+          const dx = (Math.random() - 0.5) * 44;
+          const dy = -42 - Math.random() * 35;
+          const rot = (Math.random() - 0.5) * 40;
+          const scale = 0.8 + Math.random() * 0.4;
+
+          layer.appendChild(heart);
+
+          const anim = heart.animate([
+            { transform: "translate(-50%, -50%) scale(0.3) rotate(0deg)", opacity: 0 },
+            { transform: `translate(calc(-50% + ${dx * 0.4}px), calc(-50% + ${dy * 0.4}px)) scale(${scale * 1.2}) rotate(${rot * 0.5}deg)`, opacity: 1, offset: 0.35 },
+            { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${scale}) rotate(${rot}deg)`, opacity: 0 }
+          ], {
+            duration: 800 + Math.random() * 200,
+            easing: "cubic-bezier(0.2, 0.8, 0.4, 1)"
+          });
+
+          anim.onfinish = () => {
+            if (heart.parentNode === layer) {
+              heart.remove();
+            }
+          };
+        }
+      }
+
+      function spawnBigHeart() {
+        isBigHeartPlaying = true;
+        const bigHeart = document.createElement("div");
+        bigHeart.className = "big-heart-particle";
+        bigHeart.textContent = "💖";
+        layer.appendChild(bigHeart);
+
+        const sparkleChars = ["✨", "🌟", "⭐", "💫"];
+        for (let i = 0; i < 6; i++) {
+          const sp = document.createElement("span");
+          sp.className = "heart-particle";
+          sp.textContent = sparkleChars[i % sparkleChars.length];
+          const angle = (i / 6) * Math.PI * 2;
+          const dist = 38 + Math.random() * 22;
+          const sx = Math.cos(angle) * dist;
+          const sy = Math.sin(angle) * dist;
+          layer.appendChild(sp);
+
+          sp.animate([
+            { transform: "translate(-50%, -50%) scale(0)", opacity: 0 },
+            { transform: `translate(calc(-50% + ${sx * 0.6}px), calc(-50% + ${sy * 0.6}px)) scale(1.3)`, opacity: 1, offset: 0.4 },
+            { transform: `translate(calc(-50% + ${sx}px), calc(-50% + ${sy}px)) scale(0.5)`, opacity: 0 }
+          ], {
+            duration: 1100,
+            easing: "cubic-bezier(0.2, 0.8, 0.4, 1)"
+          }).onfinish = () => sp.remove();
+        }
+
+        const anim = bigHeart.animate([
+          { transform: "translate(-50%, -50%) scale(0.2) rotate(-10deg)", opacity: 0 },
+          { transform: "translate(-50%, -50%) scale(1.35) rotate(5deg)", opacity: 1, offset: 0.35 },
+          { transform: "translate(-50%, -50%) scale(1.15) rotate(-3deg)", opacity: 1, offset: 0.55 },
+          { transform: "translate(-50%, -50%) scale(1.28) rotate(0deg)", opacity: 1, offset: 0.7 },
+          { transform: "translate(-50%, calc(-50% - 35px)) scale(0.85) rotate(0deg)", opacity: 0 }
+        ], {
+          duration: 1300,
+          easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)"
+        });
+
+        anim.onfinish = () => {
+          if (bigHeart.parentNode === layer) {
+            bigHeart.remove();
+          }
+          isBigHeartPlaying = false;
+        };
       }
     }
 
@@ -6038,6 +6779,7 @@
       setupDragAndDrop('edit-prof-conf', 'edit');
       applyLogFilter("all");
       updateCloseActionUI();
+      initBeaverEasterEgg();
       initBridge();
     }
 

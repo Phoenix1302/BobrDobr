@@ -432,6 +432,8 @@ func (t *Tray) Destroy() {
 	t.destroyed = true
 	t.mu.Unlock()
 
+	CloseActiveModernMenu()
+
 	procShell_NotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&t.nid)))
 	if t.hwnd != 0 {
 		procPostMessageW.Call(uintptr(t.hwnd), procPostQuitMessage.Addr(), 0, 0)

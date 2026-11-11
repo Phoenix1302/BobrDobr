@@ -5,6 +5,7 @@ package tray
 import (
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -32,6 +33,14 @@ var (
 	procSetCapture             = moduser32.NewProc("SetCapture")
 	procReleaseCapture         = moduser32.NewProc("ReleaseCapture")
 	procShowWindow             = moduser32.NewProc("ShowWindow")
+	procGetWindow              = moduser32.NewProc("GetWindow")
+	procWindowFromPoint        = moduser32.NewProc("WindowFromPoint")
+	procGetAncestor            = moduser32.NewProc("GetAncestor")
+	procGetClassNameW          = moduser32.NewProc("GetClassNameW")
+	procFindWindowW            = moduser32.NewProc("FindWindowW")
+	procIsWindowVisible        = moduser32.NewProc("IsWindowVisible")
+	procGetWindowRect          = moduser32.NewProc("GetWindowRect")
+	procNotifyWinEvent         = moduser32.NewProc("NotifyWinEvent")
 
 	procCreateCompatibleDC     = modgdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = modgdi32.NewProc("CreateCompatibleBitmap")
@@ -72,14 +81,24 @@ const (
 	WM_ACTIVATE    = 0x0006
 	WM_KILLFOCUS   = 0x0008
 	WM_KEYDOWN     = 0x0100
+	WM_KEYUP       = 0x0101
+	WM_CANCELMODE  = 0x001F
 	WM_DESTROY     = 0x0002
 
 	VK_ESCAPE = 0x1B
 
 	WA_INACTIVE = 0
 
-	SW_SHOW = 5
-	SW_HIDE = 0
+	SW_SHOW           = 5
+	SW_HIDE           = 0
+	SW_SHOWNOACTIVATE = 4
+
+	GA_ROOT  = 2
+	GW_CHILD = 5
+
+	EVENT_SYSTEM_MENUPOPUPSTART = 0x0006
+	EVENT_SYSTEM_MENUPOPUPEND   = 0x0007
+	OBJID_CLIENT                = 0xFFFFFFFC
 
 	DT_LEFT       = 0x00000000
 	DT_VCENTER    = 0x00000004
@@ -146,12 +165,124 @@ type modernMenuItem struct {
 }
 
 type modernMenu struct {
-	hwnd       windows.HWND
-	items      []modernMenuItem
-	hoverIndex int
-	width      int32
-	height     int32
-	tracking   bool
+	hwnd          windows.HWND
+	items         []modernMenuItem
+	hoverIndex    int
+	width         int32
+	height        int32
+	tracking      bool
+	hOverflow     windows.HWND
+	fromOverflow  bool
+	stopKeepAlive chan struct{}
+	stopOnce      sync.Once
+	dismissOnce   sync.Once
+}
+
+func (m *modernMenu) stopKeepAliveRoutine() {
+	m.stopOnce.Do(func() {
+		if m.stopKeepAlive != nil {
+			close(m.stopKeepAlive)
+		}
+	})
+}
+
+func dismissOverflowWindow(h windows.HWND) {
+	if h == 0 {
+		return
+	}
+	// Dismiss gracefully via standard Win32 cancel & Escape commands.
+	// This lets Windows Explorer / XAML island smoothly close the flyout
+	// and update the chevron ToggleButton state to IsChecked=false,
+	// so subsequent clicks open on the very first try without requiring two clicks!
+	procPostMessageW.Call(uintptr(h), WM_CANCELMODE, 0, 0)
+	procPostMessageW.Call(uintptr(h), WM_KEYDOWN, VK_ESCAPE, 0)
+	procPostMessageW.Call(uintptr(h), WM_KEYUP, VK_ESCAPE, 0xC0000001)
+
+	hChild, _, _ := procGetWindow.Call(uintptr(h), GW_CHILD)
+	if hChild != 0 {
+		procPostMessageW.Call(hChild, WM_CANCELMODE, 0, 0)
+		procPostMessageW.Call(hChild, WM_KEYDOWN, VK_ESCAPE, 0)
+		procPostMessageW.Call(hChild, WM_KEYUP, VK_ESCAPE, 0xC0000001)
+	}
+}
+
+func (m *modernMenu) dismiss(dismissOverflow bool) {
+	m.dismissOnce.Do(func() {
+		m.stopKeepAliveRoutine()
+
+		if dismissOverflow && m.fromOverflow && m.hOverflow != 0 {
+			dismissOverflowWindow(m.hOverflow)
+		}
+
+		activeModernMenuMu.Lock()
+		if activeModernMenu == m {
+			activeModernMenu = nil
+		}
+		activeModernMenuMu.Unlock()
+
+		if m.hwnd != 0 {
+			h := m.hwnd
+			m.hwnd = 0
+			procReleaseCapture.Call()
+			procDestroyWindow.Call(uintptr(h))
+		}
+	})
+}
+
+func detectOverflowWindow(pt POINT) (windows.HWND, bool) {
+	overflowClasses := []string{
+		"TopLevelWindowForOverflowXamlIsland", // Windows 11 (22H2+)
+		"NotifyIconOverflowWindow",            // Windows 10 / earlier Win 11
+	}
+
+	// 1. Check window directly under cursor
+	ptVal := uintptr(uint32(pt.X)) | (uintptr(uint32(pt.Y)) << 32)
+	hPoint, _, _ := procWindowFromPoint.Call(ptVal)
+	if hPoint != 0 {
+		hRoot, _, _ := procGetAncestor.Call(hPoint, GA_ROOT)
+		if hRoot != 0 {
+			var buf [256]uint16
+			procGetClassNameW.Call(hRoot, uintptr(unsafe.Pointer(&buf[0])), 256)
+			clsName := windows.UTF16ToString(buf[:])
+			for _, target := range overflowClasses {
+				if clsName == target {
+					vis, _, _ := procIsWindowVisible.Call(hRoot)
+					if vis != 0 {
+						return windows.HWND(hRoot), true
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Fallback: Search top-level windows for visible overflow window containing pt
+	for _, target := range overflowClasses {
+		clsPtr, _ := windows.UTF16PtrFromString(target)
+		h, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(clsPtr)), 0)
+		if h != 0 {
+			vis, _, _ := procIsWindowVisible.Call(h)
+			if vis != 0 {
+				var rc RECT
+				procGetWindowRect.Call(h, uintptr(unsafe.Pointer(&rc)))
+				if pt.X >= rc.Left-8 && pt.X <= rc.Right+8 && pt.Y >= rc.Top-8 && pt.Y <= rc.Bottom+8 {
+					return windows.HWND(h), true
+				}
+			}
+		}
+	}
+
+	return 0, false
+}
+
+// CloseActiveModernMenu dismisses any active tray menu
+func CloseActiveModernMenu() {
+	activeModernMenuMu.Lock()
+	if activeModernMenu != nil {
+		old := activeModernMenu
+		activeModernMenu = nil
+		old.dismiss(true)
+	}
+	activeModernMenuMu.Unlock()
 }
 
 var (
@@ -187,9 +318,10 @@ func registerModernMenuClass() {
 // showModernMenu displays a sleek Windows 11 / Antigravity styled dark popup menu
 func (t *Tray) showModernMenu() {
 	activeModernMenuMu.Lock()
-	if activeModernMenu != nil && activeModernMenu.hwnd != 0 {
-		procDestroyWindow.Call(uintptr(activeModernMenu.hwnd))
+	if activeModernMenu != nil {
+		old := activeModernMenu
 		activeModernMenu = nil
+		old.dismiss(false)
 	}
 	activeModernMenuMu.Unlock()
 
@@ -338,6 +470,13 @@ func (t *Tray) showModernMenu() {
 		posY = workArea.Bottom - menuHeight - 8
 	}
 
+	// Detect if opened from Windows Notification Area Overflow window
+	hOverflow, fromOverflow := detectOverflowWindow(pt)
+	parentHwnd := uintptr(0)
+	if fromOverflow && hOverflow != 0 {
+		parentHwnd = uintptr(hOverflow)
+	}
+
 	// 4. Create Modern Popup Window
 	hInst, _, _ := procGetModuleHandleW.Call(0)
 	namePtr, _ := windows.UTF16PtrFromString(menuClassName)
@@ -350,7 +489,7 @@ func (t *Tray) showModernMenu() {
 		WS_POPUP,
 		uintptr(posX), uintptr(posY),
 		uintptr(menuWidth), uintptr(menuHeight),
-		0, 0, hInst, 0,
+		parentHwnd, 0, hInst, 0,
 	)
 
 	if hwnd == 0 {
@@ -358,16 +497,39 @@ func (t *Tray) showModernMenu() {
 	}
 
 	m := &modernMenu{
-		hwnd:       windows.HWND(hwnd),
-		items:      items,
-		hoverIndex: -1,
-		width:      menuWidth,
-		height:     menuHeight,
+		hwnd:          windows.HWND(hwnd),
+		items:         items,
+		hoverIndex:    -1,
+		width:         menuWidth,
+		height:        menuHeight,
+		hOverflow:     hOverflow,
+		fromOverflow:  fromOverflow,
+		stopKeepAlive: make(chan struct{}),
 	}
 
 	activeModernMenuMu.Lock()
 	activeModernMenu = m
 	activeModernMenuMu.Unlock()
+
+	// Keep overflow window open while modern menu is active
+	if fromOverflow && hOverflow != 0 {
+		go func(h windows.HWND, stopCh <-chan struct{}) {
+			ticker := time.NewTicker(25 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stopCh:
+					return
+				case <-ticker.C:
+					vis, _, _ := procIsWindowVisible.Call(uintptr(h))
+					if vis == 0 {
+						// SW_SHOWNOACTIVATE = 4: keep overflow window visible without stealing focus
+						procShowWindow.Call(uintptr(h), 4)
+					}
+				}
+			}
+		}(hOverflow, m.stopKeepAlive)
+	}
 
 	// Apply rounded corners (SetWindowRgn for Windows 10/11)
 	rgn, _, _ := procCreateRoundRectRgn.Call(0, 0, uintptr(menuWidth+1), uintptr(menuHeight+1), 16, 16)
@@ -381,6 +543,11 @@ func (t *Tray) showModernMenu() {
 		darkVal := uint32(1)
 		_, _, _ = procDwmSetWindowAttribute.Call(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, uintptr(unsafe.Pointer(&roundVal)), 4)
 		_, _, _ = procDwmSetWindowAttribute.Call(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, uintptr(unsafe.Pointer(&darkVal)), 4)
+	}
+
+	// Notify shell that menu popup is active
+	if procNotifyWinEvent.Find() == nil {
+		procNotifyWinEvent.Call(EVENT_SYSTEM_MENUPOPUPSTART, hwnd, uintptr(uint32(OBJID_CLIENT)), 0)
 	}
 
 	procShowWindow.Call(hwnd, SW_SHOW)
@@ -467,8 +634,27 @@ func modernMenuWndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) ui
 
 		// Check if click was outside menu boundaries
 		if ptX < 0 || ptX > m.width || ptY < 0 || ptY > m.height {
+			var ptCur POINT
+			procGetCursorPos.Call(uintptr(unsafe.Pointer(&ptCur)))
+			ptVal := uintptr(uint32(ptCur.X)) | (uintptr(uint32(ptCur.Y)) << 32)
+			hClicked, _, _ := procWindowFromPoint.Call(ptVal)
+
+			dismissOver := true
+			if m.fromOverflow && m.hOverflow != 0 {
+				var rcOver RECT
+				procGetWindowRect.Call(uintptr(m.hOverflow), uintptr(unsafe.Pointer(&rcOver)))
+				if ptCur.X >= rcOver.Left && ptCur.X <= rcOver.Right && ptCur.Y >= rcOver.Top && ptCur.Y <= rcOver.Bottom {
+					dismissOver = false
+				}
+			}
+
+			// Release capture first so system can route focus/click naturally
 			procReleaseCapture.Call()
-			procDestroyWindow.Call(uintptr(hwnd))
+			if dismissOver && hClicked != 0 && windows.HWND(hClicked) != m.hwnd && windows.HWND(hClicked) != m.hOverflow {
+				procSetForegroundWindow.Call(hClicked)
+			}
+
+			m.dismiss(dismissOver)
 			return 0
 		}
 		return 0
@@ -476,8 +662,6 @@ func modernMenuWndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) ui
 	case WM_LBUTTONUP:
 		ptX := int32(int16(lParam & 0xFFFF))
 		ptY := int32(int16((lParam >> 16) & 0xFFFF))
-
-		procReleaseCapture.Call()
 
 		clickedIdx := -1
 		for i, it := range m.items {
@@ -489,7 +673,7 @@ func modernMenuWndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) ui
 			}
 		}
 
-		procDestroyWindow.Call(uintptr(hwnd))
+		m.dismiss(true)
 
 		if clickedIdx >= 0 && clickedIdx < len(m.items) {
 			action := m.items[clickedIdx].action
@@ -501,24 +685,33 @@ func modernMenuWndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) ui
 
 	case WM_ACTIVATE:
 		if wParam&0xFFFF == WA_INACTIVE {
-			procReleaseCapture.Call()
-			procDestroyWindow.Call(uintptr(hwnd))
+			hAct := windows.HWND(lParam)
+			if m.fromOverflow && m.hOverflow != 0 && (hAct == m.hOverflow || hAct == m.hwnd) {
+				return 0
+			}
+			m.dismiss(true)
 			return 0
 		}
 
 	case WM_KILLFOCUS:
-		procReleaseCapture.Call()
-		procDestroyWindow.Call(uintptr(hwnd))
+		hNewFocus := windows.HWND(wParam)
+		if m.fromOverflow && m.hOverflow != 0 && (hNewFocus == m.hOverflow || hNewFocus == m.hwnd) {
+			return 0
+		}
+		m.dismiss(true)
 		return 0
 
 	case WM_KEYDOWN:
 		if wParam == VK_ESCAPE {
-			procReleaseCapture.Call()
-			procDestroyWindow.Call(uintptr(hwnd))
+			m.dismiss(true)
 			return 0
 		}
 
 	case WM_DESTROY:
+		m.stopKeepAliveRoutine()
+		if procNotifyWinEvent.Find() == nil {
+			procNotifyWinEvent.Call(EVENT_SYSTEM_MENUPOPUPEND, uintptr(hwnd), uintptr(uint32(OBJID_CLIENT)), 0)
+		}
 		activeModernMenuMu.Lock()
 		if activeModernMenu != nil && activeModernMenu.hwnd == hwnd {
 			activeModernMenu = nil
