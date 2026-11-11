@@ -38,8 +38,8 @@
 
 Все исполняемые файлы подписаны официальным сертификатом с доверенным штампом времени DigiCert RFC 3161:
 - **Инсталлятор:** `BobrDobr-Setup-v1.3.1.exe`
-- **Размер:** 9.7 MB (10 167 328 байт)
-- **SHA-256:** `8B2BC5237DFF962C4B3A57B442773DE1D25499439AB92560FDB53D81DD89F917`
+- **Размер:** 9.7 MB (10 167 808 байт)
+- **SHA-256:** `3CC64099C6E91FA6B1813D1EB0CBE72F74898297EE470623728418CD45A3BE13`
 - **Субъект сертификата:** `CN=BobrDobr Hydro-engineering Team, O=BobrDobr Hydro-engineering Team, C=RU`
 - **Центр штампа времени:** `DigiCert SHA256 RSA4096 Timestamp Responder 2026 1` (RFC 3161)
 - **Статус подписи:** `Valid`

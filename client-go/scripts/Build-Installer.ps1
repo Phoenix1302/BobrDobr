@@ -194,6 +194,10 @@ $sig = Get-AuthenticodeSignature -FilePath $versionedSetupExe
 $hash = (Get-FileHash -Path $versionedSetupExe -Algorithm SHA256).Hash
 $fileInfo = Get-Item -Path $versionedSetupExe
 
+$signerSubject = if ($sig -and $null -ne $sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "Unsigned" }
+$timeStamperSubject = if ($sig -and $null -ne $sig.TimeStamperCertificate) { $sig.TimeStamperCertificate.Subject } else { "None" }
+$sigStatus = if ($sig -and $null -ne $sig.Status) { $sig.Status.ToString() } else { "NotSigned" }
+
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " BUILD AND SIGNING REPORT" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
@@ -201,9 +205,9 @@ Write-Host " Setup File:        $versionedSetupExe" -ForegroundColor White
 Write-Host " Generic Copy:      $genericSetupExe" -ForegroundColor White
 Write-Host " Size:              $([math]::Round($fileInfo.Length / 1MB, 2)) MB ($($fileInfo.Length) bytes)" -ForegroundColor White
 Write-Host " SHA-256:           $hash" -ForegroundColor White
-Write-Host " Signer:            $($sig.SignerCertificate.Subject)" -ForegroundColor White
-Write-Host " Timestamp Server:  $($sig.TimeStamperCertificate.Subject)" -ForegroundColor White
-Write-Host " Signature Status:  $($sig.Status)" -ForegroundColor White
+Write-Host " Signer:            $signerSubject" -ForegroundColor White
+Write-Host " Timestamp Server:  $timeStamperSubject" -ForegroundColor White
+Write-Host " Signature Status:  $sigStatus" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Green
 
 return [PSCustomObject]@{
@@ -211,7 +215,7 @@ return [PSCustomObject]@{
     GenericPath = $genericSetupExe
     SizeBytes   = $fileInfo.Length
     SHA256      = $hash
-    Signer      = $sig.SignerCertificate.Subject
-    Timestamp   = $sig.TimeStamperCertificate.Subject
-    Status      = $sig.Status.ToString()
+    Signer      = $signerSubject
+    Timestamp   = $timeStamperSubject
+    Status      = $sigStatus
 }
