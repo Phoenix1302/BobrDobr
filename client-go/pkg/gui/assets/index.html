@@ -2649,6 +2649,86 @@
         transform: translateY(0) scale(1);
       }
     }
+
+    /* Author / GitHub Profile Section in Settings */
+    .author-github-card {
+      background: linear-gradient(180deg, #18232a 0%, #0f161a 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 12px;
+      padding: 14px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .author-github-card::after {
+      content: '';
+      position: absolute;
+      top: -24px;
+      right: -24px;
+      width: 90px;
+      height: 90px;
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .author-interactive-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.22s var(--ease-smooth);
+      position: relative;
+      z-index: 1;
+    }
+    .author-interactive-row:hover {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 14px rgba(245, 158, 11, 0.16);
+    }
+    .author-avatar-chip {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border: 1.5px solid rgba(245, 158, 11, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+      flex-shrink: 0;
+      transition: transform 0.22s ease, box-shadow 0.22s ease;
+    }
+    .author-interactive-row:hover .author-avatar-chip {
+      transform: scale(1.06);
+      box-shadow: 0 0 16px rgba(245, 158, 11, 0.5);
+    }
+    .author-gh-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #f59e0b;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 7px;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      letter-spacing: 0.2px;
+    }
+    .author-interactive-row:hover .author-gh-btn {
+      background: rgba(245, 158, 11, 0.25);
+      border-color: #f59e0b;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -3598,6 +3678,38 @@
               <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.1 (Go Native Engine)</div>
             </div>
             <button class="btn btn-xs" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000, null, null, 'update'); callGo('checkUpdate')">🔄 Проверить обновления</button>
+          </div>
+        </div>
+
+        <!-- Секция: Автор проекта / GitHub -->
+        <div class="sub-section-card author-github-card">
+          <div class="sub-section-header">
+            <span class="sub-section-title" style="color:var(--neon-amber);">Авторство и разработка</span>
+            <span class="sub-status-pill" style="color:#f59e0b; background-color:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.35);">GitHub Project</span>
+          </div>
+          <div class="author-interactive-row" onclick="openAuthorProfile()" title="Открыть профиль автора Phoenix1302 на GitHub">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div class="author-avatar-chip">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="#f59e0b">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-weight:700; font-size:13px; color:#ffffff; letter-spacing:0.2px;">Phoenix1302</span>
+                  <span style="font-size:10px; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.35); padding:1px 7px; border-radius:9999px;">Автор</span>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Разработчик БобрДобр VPN • GitHub Profile</div>
+              </div>
+            </div>
+            <div class="author-gh-btn">
+              <span>github.com/Phoenix1302</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -6470,6 +6582,14 @@
     document.getElementById("btn-open-github-release").onclick = () => {
       callGo("openCabinet", { url: latestReleaseHtmlUrl });
     };
+
+    function openAuthorProfile() {
+      const url = "https://github.com/Phoenix1302";
+      showToast("Открытие профиля автора на GitHub...", "info", 2000, null, null, "info");
+      callGo("openUrl", { url: url });
+      callGo("openCabinet", { url: url });
+    }
+    window.openAuthorProfile = openAuthorProfile;
 
     document.getElementById("btn-start-update").onclick = () => {
       document.getElementById("update-progress-block").style.display = "flex";

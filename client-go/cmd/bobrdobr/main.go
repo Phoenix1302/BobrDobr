@@ -1642,6 +1642,17 @@ func main() {
 		}
 	})
 
+	ui.On("openUrl", func(payload json.RawMessage) {
+		var req struct {
+			URL string `json:"url"`
+		}
+		_ = json.Unmarshal(payload, &req)
+		if req.URL != "" && runtime.GOOS == "windows" {
+			ui.Log(fmt.Sprintf("Открытие внешней ссылки: %s", req.URL), "БОБР")
+			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", req.URL).Start()
+		}
+	})
+
 	ui.On("instanceAction", func(payload json.RawMessage) {
 		var req struct {
 			Action string `json:"action"`
