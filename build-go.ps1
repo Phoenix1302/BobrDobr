@@ -5,7 +5,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.2",
+    [string]$Version = "1.3.0",
     [switch]$SkipTests
 )
 
@@ -36,16 +36,18 @@ if (-not $SkipTests) {
 
 # 2. Compile Windows Binary
 Write-Host "`n[*] Compiling BobrDobr.exe (Subsystem 2 GUI with embedded icons)..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Force -Path $binDir, $distWindowsDir | Out-Null
+$distWindowsBinDir = Join-Path $distWindowsDir "bin"
+New-Item -ItemType Directory -Force -Path $binDir, $distWindowsDir, $distWindowsBinDir | Out-Null
 
 $sysoPath = Join-Path $clientGoDir "cmd\bobrdobr\rsrc_windows_amd64.syso"
-Write-Host "[*] Generating Windows PE icon and manifest resources..." -ForegroundColor Yellow
-podman run --rm -v "${repoRoot}:/workspace:Z" -w /workspace docker.io/library/golang:1.24-alpine sh -c "go install github.com/akavel/rsrc@latest && rsrc -manifest /workspace/client-go/build/windows/manifest/BobrDobr.exe.manifest -ico /workspace/assets/bobr_logo.ico -arch amd64 -o /workspace/client-go/cmd/bobrdobr/rsrc_windows_amd64.syso"
+Write-Host "[*] Generating Windows PE icon, manifest, and version resources..." -ForegroundColor Yellow
+podman run --rm -v "${repoRoot}:/workspace:Z" -w /workspace docker.io/library/golang:1.24-alpine sh -c "go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest && goversioninfo -o /workspace/client-go/cmd/bobrdobr/rsrc_windows_amd64.syso /workspace/client-go/build/windows/versioninfo.json"
 if ($LASTEXITCODE -ne 0) {
-    throw "rsrc resource generation failed!"
+    throw "goversioninfo resource generation failed!"
 }
 
-podman run --rm -v "${clientGoDir}:/workspace:Z" -w /workspace -e CGO_ENABLED=0 -e GOOS=windows -e GOARCH=amd64 docker.io/library/golang:1.24-alpine go build -mod=vendor -ldflags="-H windowsgui -s -w" -o /workspace/bin/BobrDobr.exe ./cmd/bobrdobr
+# Build without -s -w stripping: keeping Go symbol tables and runtime metadata prevents false-positive ML detections (Bearfoos.A!ml)
+podman run --rm -v "${clientGoDir}:/workspace:Z" -w /workspace -e CGO_ENABLED=0 -e GOOS=windows -e GOARCH=amd64 docker.io/library/golang:1.24-alpine go build -mod=vendor -ldflags="-H windowsgui" -o /workspace/bin/BobrDobr.exe ./cmd/bobrdobr
 if ($LASTEXITCODE -ne 0) {
     throw "BobrDobr.exe compilation failed!"
 }
@@ -53,6 +55,19 @@ if ($LASTEXITCODE -ne 0) {
 Copy-Item (Join-Path $binDir "BobrDobr.exe") (Join-Path $distWindowsDir "BobrDobr.exe") -Force
 $exeSize = (Get-Item (Join-Path $binDir "BobrDobr.exe")).Length / 1MB
 Write-Host ("[OK] Binary compiled: {0:N2} MB" -f $exeSize) -ForegroundColor Green
+
+# Ensure openconnect-worker.exe is present in bin/windows and copied to dist/windows/bin/
+$workerSrc = Join-Path $repoRoot "bin\windows\openconnect-worker.exe"
+if (-not (Test-Path $workerSrc)) {
+    Write-Host "[*] Compiling openconnect-worker.exe..." -ForegroundColor Yellow
+    powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "build-openconnect-worker.ps1")
+}
+
+if (Test-Path $workerSrc) {
+    Copy-Item $workerSrc (Join-Path $distWindowsDir "openconnect-worker.exe") -Force
+    Copy-Item $workerSrc (Join-Path $distWindowsBinDir "openconnect-worker.exe") -Force
+    Write-Host "[OK] openconnect-worker.exe staged to dist/windows/ and dist/windows/bin/" -ForegroundColor Green
+}
 
 # 3. Build Trusted Installer
 Write-Host "`n[*] Building and signing Inno Setup installer..." -ForegroundColor Yellow

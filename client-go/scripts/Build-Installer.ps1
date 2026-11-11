@@ -11,7 +11,7 @@
     6. Verifies the digital signature and outputs SHA256 checksums.
 
 .PARAMETER Version
-    Installer version string. Default: 1.2.0.
+    Installer version string. Default: 1.3.0.
 
 .PARAMETER OutputDir
     Directory for the compiled installer. Default: dist/installer.
@@ -25,7 +25,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version = "1.2.2",
+    [string]$Version = "1.3.0",
     [string]$OutputDir,
     [switch]$NoSign,
     [switch]$Clean
@@ -98,6 +98,17 @@ if (-not (Test-Path $distExe)) {
     }
 }
 
+# Ensure dist/windows/bin directory exists and contains openconnect-worker.exe
+$distWindowsBinDir = Join-Path $repoRoot "dist\windows\bin"
+if (-not (Test-Path $distWindowsBinDir)) {
+    New-Item -ItemType Directory -Path $distWindowsBinDir -Force | Out-Null
+}
+$workerSrc = Join-Path $repoRoot "bin\windows\openconnect-worker.exe"
+if (Test-Path $workerSrc) {
+    Copy-Item -Path $workerSrc -Destination (Join-Path $distWindowsBinDir "openconnect-worker.exe") -Force
+    Copy-Item -Path $workerSrc -Destination (Join-Path $repoRoot "dist\windows\openconnect-worker.exe") -Force
+}
+
 # 4. Check or Generate Code Signing Certificates
 $certPfx = Join-Path $repoRoot "client-go\certs\BobrDobr-CodeSign.pfx"
 if ((-not $NoSign) -and (-not (Test-Path $certPfx))) {
@@ -119,11 +130,27 @@ if (-not $NoSign) {
     
     $backendBinDir = Join-Path $repoRoot "bin\windows"
     if (Test-Path $backendBinDir) {
-        $binFiles = Get-ChildItem -Path $backendBinDir -Include *.exe, *.dll -File | Select-Object -ExpandProperty FullName
+        $binFiles = Get-ChildItem -Path $backendBinDir -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Select-Object -ExpandProperty FullName
         $binariesToSign += $binFiles
     }
 
+    if (Test-Path $distWindowsBinDir) {
+        $distBinFiles = Get-ChildItem -Path $distWindowsBinDir -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Select-Object -ExpandProperty FullName
+        $binariesToSign += $distBinFiles
+    }
+
+    $distWorker = Join-Path $repoRoot "dist\windows\openconnect-worker.exe"
+    if (Test-Path $distWorker) {
+        $binariesToSign += $distWorker
+    }
+
+    $binariesToSign = $binariesToSign | Select-Object -Unique
+
     if ($binariesToSign.Count -gt 0) {
+        Write-Host "    Binaries queued for code signing:" -ForegroundColor Gray
+        foreach ($b in $binariesToSign) {
+            Write-Host "      - $b" -ForegroundColor Gray
+        }
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $signScript -FilePath ($binariesToSign -join ",")
     }
 }

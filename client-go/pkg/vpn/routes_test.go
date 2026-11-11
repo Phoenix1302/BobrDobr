@@ -191,3 +191,82 @@ Network Destination        Netmask          Gateway       Interface  Metric
 		t.Fatalf("Expected 192.168.0.1, got %q", gw)
 	}
 }
+
+func TestRouteManager_ApplyBypassRoutes_WithInterfaceIndex(t *testing.T) {
+	rm := NewRouteManager()
+	rm.SetCachedGateway("192.168.1.1")
+	rm.SetCachedInterfaceIndex(25)
+
+	var executedCmds [][]string
+	rm.SetRouteExecutor(func(args ...string) error {
+		executedCmds = append(executedCmds, args)
+		return nil
+	})
+
+	entries := []string{"8.8.8.8"}
+	added, err := rm.ApplyBypassRoutes(entries)
+	if err != nil {
+		t.Fatalf("ApplyBypassRoutes failed: %v", err)
+	}
+	if added != 1 {
+		t.Fatalf("Expected 1 route added, got %d", added)
+	}
+
+	if len(executedCmds) != 1 {
+		t.Fatalf("Expected 1 command executed, got %d", len(executedCmds))
+	}
+
+	cmd := executedCmds[0]
+	// Expected: add 8.8.8.8 mask 255.255.255.255 192.168.1.1 metric 1 if 25
+	expected := []string{"add", "8.8.8.8", "mask", "255.255.255.255", "192.168.1.1", "metric", "1", "if", "25"}
+	if len(cmd) != len(expected) {
+		t.Fatalf("Expected %d arguments, got %d: %v", len(expected), len(cmd), cmd)
+	}
+	for i, exp := range expected {
+		if cmd[i] != exp {
+			t.Errorf("At index %d: expected %q, got %q", i, exp, cmd[i])
+		}
+	}
+
+	active := rm.GetActiveRoutes()
+	if len(active) != 1 || active[0].InterfaceIndex != 25 {
+		t.Fatalf("Expected active route with interface index 25, got: %+v", active)
+	}
+}
+
+func TestRouteManager_DetectPhysicalGateway_WithInterfaceFinder(t *testing.T) {
+	rm := NewRouteManager()
+
+	sampleOutput := `
+===========================================================================
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.0.1     192.168.1.31     25
+===========================================================================
+`
+	rm.SetCmdRunner(func(name string, args ...string) (string, error) {
+		if name == "route" {
+			return sampleOutput, nil
+		}
+		return "", nil
+	})
+
+	rm.SetInterfaceFinder(func(targetIP string) int {
+		if targetIP == "192.168.1.31" {
+			return 25
+		}
+		return 0
+	})
+
+	gw, err := rm.DetectPhysicalGateway()
+	if err != nil {
+		t.Fatalf("DetectPhysicalGateway failed: %v", err)
+	}
+	if gw != "192.168.0.1" {
+		t.Fatalf("Expected gw 192.168.0.1, got %s", gw)
+	}
+	if rm.CachedInterfaceIndex() != 25 {
+		t.Fatalf("Expected ifIndex 25, got %d", rm.CachedInterfaceIndex())
+	}
+}
+

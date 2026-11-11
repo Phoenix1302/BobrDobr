@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 type brokenWriter struct{}
@@ -490,5 +491,167 @@ func TestSetup_WritesBannerAndCapturesStandardLog(t *testing.T) {
 	}
 	if !strings.Contains(content, "[БОБР] Стандартный лог через log.Println") {
 		t.Errorf("Log missing message from log.Println: %q", content)
+	}
+}
+
+func TestSafeLogWriter_UTF8BOM_NewAndEmptyFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 1. Newly created log file must start with UTF-8 BOM immediately upon creation
+	logPath1 := filepath.Join(tmpDir, "new.log")
+	writer1, err := NewSafeLogWriter(logPath1, 1024*1024)
+	if err != nil {
+		t.Fatalf("NewSafeLogWriter failed: %v", err)
+	}
+	defer writer1.Close()
+
+	data1, err := os.ReadFile(logPath1)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if !bytes.Equal(data1, UTF8BOM) {
+		t.Fatalf("Newly created log file must contain exactly UTF-8 BOM, got %v", data1)
+	}
+
+	// 2. Writing Russian text to new file retains UTF-8 BOM and valid UTF-8
+	msg := "[БОБР] Проверка записи UTF-8 с BOM\n"
+	_, err = writer1.Write([]byte(msg))
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	data1After, err := os.ReadFile(logPath1)
+	if err != nil {
+		t.Fatalf("ReadFile after write failed: %v", err)
+	}
+	if !bytes.HasPrefix(data1After, UTF8BOM) {
+		t.Errorf("Log file lost UTF-8 BOM after write: %v", data1After[:min(len(data1After), 10)])
+	}
+	if !utf8.Valid(data1After) {
+		t.Errorf("Log file content is not valid UTF-8: %q", string(data1After))
+	}
+	if !strings.Contains(string(data1After), "Проверка записи UTF-8 с BOM") {
+		t.Errorf("Log file missing written text: %q", string(data1After))
+	}
+
+	// 3. Existing empty file (size == 0) must also be initialized with UTF-8 BOM
+	logPath2 := filepath.Join(tmpDir, "empty.log")
+	if err := os.WriteFile(logPath2, []byte{}, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	writer2, err := NewSafeLogWriter(logPath2, 1024*1024)
+	if err != nil {
+		t.Fatalf("NewSafeLogWriter on empty file failed: %v", err)
+	}
+	defer writer2.Close()
+
+	data2, err := os.ReadFile(logPath2)
+	if err != nil {
+		t.Fatalf("ReadFile on empty file failed: %v", err)
+	}
+	if !bytes.Equal(data2, UTF8BOM) {
+		t.Errorf("Pre-existing empty log file was not seeded with UTF-8 BOM, got %v", data2)
+	}
+}
+
+func TestSafeLogWriter_UTF8BOM_RotatedArchives(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "bobrdobr.log")
+
+	// Trigger rotation with small maxSize
+	writer, err := NewSafeLogWriter(logPath, 150)
+	if err != nil {
+		t.Fatalf("NewSafeLogWriter failed: %v", err)
+	}
+	defer writer.Close()
+
+	for i := 0; i < 15; i++ {
+		_, err := writer.Write([]byte(fmt.Sprintf("[БОБР] Запись ротации #%d с русским текстом\n", i)))
+		if err != nil {
+			t.Fatalf("Write %d failed: %v", i, err)
+		}
+	}
+
+	// Verify active log file starts with UTF-8 BOM
+	activeData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile active failed: %v", err)
+	}
+	if !bytes.HasPrefix(activeData, UTF8BOM) {
+		t.Errorf("Active log file after rotation does not start with UTF-8 BOM")
+	}
+	if !utf8.Valid(activeData) {
+		t.Errorf("Active log file is not valid UTF-8")
+	}
+
+	// Verify all rotated archive files also start with UTF-8 BOM and have valid UTF-8
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+
+	var archiveCount int
+	for _, e := range entries {
+		name := e.Name()
+		if name == "bobrdobr.log" {
+			continue
+		}
+		if strings.HasPrefix(name, "bobrdobr-") && strings.HasSuffix(name, ".log") {
+			archiveCount++
+			archData, err := os.ReadFile(filepath.Join(tmpDir, name))
+			if err != nil {
+				t.Fatalf("ReadFile archive %s failed: %v", name, err)
+			}
+			if !bytes.HasPrefix(archData, UTF8BOM) {
+				t.Errorf("Archive %s does not start with UTF-8 BOM", name)
+			}
+			if !utf8.Valid(archData) {
+				t.Errorf("Archive %s is not valid UTF-8", name)
+			}
+		}
+	}
+
+	if archiveCount == 0 {
+		t.Fatalf("Expected at least one rotated archive")
+	}
+}
+
+func TestFormatEntry_UTF8Sanitization(t *testing.T) {
+	fixedTime := time.Date(2026, 11, 9, 20, 0, 0, 0, time.UTC)
+
+	// 1. Invalid UTF-8 byte sequences must be sanitized to valid UTF-8
+	invalidBytes := []byte("[БОБР] Ошибка \xff\xfe тест \x80\x81")
+	formattedInvalid := FormatEntry(invalidBytes, fixedTime)
+	if !utf8.Valid(formattedInvalid) {
+		t.Fatalf("FormatEntry result is not valid UTF-8: %v", formattedInvalid)
+	}
+	// Invalid sequences should be stripped
+	strFormatted := string(formattedInvalid)
+	if strings.Contains(strFormatted, "\xff") || strings.Contains(strFormatted, "\xfe") {
+		t.Errorf("FormatEntry did not sanitize invalid bytes: %q", strFormatted)
+	}
+	if !strings.Contains(strFormatted, "Ошибка") || !strings.Contains(strFormatted, "тест") {
+		t.Errorf("FormatEntry stripped valid Russian text: %q", strFormatted)
+	}
+
+	// 2. Valid UTF-8 emojis and Russian text must be perfectly preserved
+	validMsg := "[ПЛОТИНА] 🟢 БобрДобр VPN — Защищено: Сервер Франкфурт [WireGuard]"
+	formattedValid := FormatEntry([]byte(validMsg), fixedTime)
+	if !utf8.Valid(formattedValid) {
+		t.Fatalf("FormatEntry valid result is not valid UTF-8: %v", formattedValid)
+	}
+	if !strings.Contains(string(formattedValid), "🟢 БобрДобр VPN — Защищено") {
+		t.Errorf("FormatEntry corrupted valid emoji or text: %q", string(formattedValid))
+	}
+
+	// 3. Startup banner with invalid bytes
+	bannerWithInvalid := []byte("=== Startup \xff\xfe Banner ===")
+	formattedBanner := FormatEntry(bannerWithInvalid, fixedTime)
+	if !utf8.Valid(formattedBanner) {
+		t.Fatalf("FormatEntry banner is not valid UTF-8: %v", formattedBanner)
+	}
+	if !strings.Contains(string(formattedBanner), "=== Startup  Banner ===") {
+		t.Errorf("FormatEntry banner mismatch: %q", string(formattedBanner))
 	}
 }

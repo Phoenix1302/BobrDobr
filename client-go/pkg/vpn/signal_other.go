@@ -2,19 +2,14 @@
 
 package vpn
 
-import (
-	"os"
-	"syscall"
-)
+// DeliverConsoleSignal is deprecated. Kept as a no-op for backward compatibility.
+func DeliverConsoleSignal(pid int) bool {
+	return false
+}
 
-// SendGracefulSignal sends SIGINT / SIGTERM on non-Windows platforms.
+// SendGracefulSignal is deprecated. Pure-Go openconnect-worker handles graceful
+// AnyConnect CSTP BYE packet termination via standard input pipe closure (EOF / STOP).
+// Kept as a no-op for backward compatibility.
 func SendGracefulSignal(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.SIGINT) == nil
+	return true
 }

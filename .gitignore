@@ -13,6 +13,8 @@ ENV/
 dist/
 /build/
 client-go/bin/*.exe
+openconnect-worker/*.exe
+openconnect-worker/*.dll
 client-go/build/**/Output/
 *.manifest
 !client-go/build/windows/manifest/BobrDobr.exe.manifest

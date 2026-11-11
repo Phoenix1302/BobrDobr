@@ -159,7 +159,7 @@ func (s *AmneziaSupervisor) Start(ctx context.Context, cfg AmneziaConfig) error 
 	}
 
 	cmd := s.cmdFactory(context.Background(), bin, args...)
-	configureSysProcAttr(cmd)
+	configureAmneziaProcAttr(cmd)
 
 	binDir := filepath.Dir(bin)
 	cmd.Dir = binDir
@@ -313,8 +313,10 @@ func (s *AmneziaSupervisor) ParseLine(line, channel, iface string) {
 	s.emit(currentState, line, channel, nil)
 }
 
-// Stop gracefully shuts down the daemon by sending CTRL_BREAK_EVENT,
-// waiting for exit, and falling back to SIGKILL.
+// Stop cleanly shuts down the AmneziaWG daemon process.
+// WireGuard is a stateless UDP protocol with no remote session termination packets;
+// killing the process cleanly releases the Wintun handle, which triggers the Wintun driver
+// to dismantle the virtual adapter and routes.
 func (s *AmneziaSupervisor) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	cmd := s.cmd
@@ -328,31 +330,17 @@ func (s *AmneziaSupervisor) Stop(ctx context.Context) error {
 
 	s.emit(StateDisconnecting, fmt.Sprintf("Stopping AmneziaWG tunnel (PID: %d)...", pid), "sys", nil)
 
-	// 1. Send graceful CTRL_BREAK_EVENT
-	_ = SendGracefulSignal(pid)
-
-	// 2. Wait up to 1.5s for graceful exit
-	if exitCh != nil {
-		select {
-		case <-exitCh:
-			return nil
-		case <-time.After(1500 * time.Millisecond):
-		case <-ctx.Done():
-		}
-	}
-
-	// 3. Fallback to SIGKILL if still running
 	s.mu.Lock()
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
 	s.mu.Unlock()
 
-	// 4. Wait for exitCh to close after Kill
 	if exitCh != nil {
 		select {
 		case <-exitCh:
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(1500 * time.Millisecond):
+		case <-ctx.Done():
 		}
 	}
 

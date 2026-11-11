@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -58,6 +59,14 @@ func WithMaxRetries(retries int) ClientOption {
 	}
 }
 
+// WithRetryDelays sets custom retry delays for rate limit (HTTP 429) backoff.
+func WithRetryDelays(delays ...time.Duration) ClientOption {
+	return func(c *Client) {
+		c.retryDelays = delays
+		c.maxRetries = len(delays)
+	}
+}
+
 // Client manages subscription fetching, parsing, and lifecycle verification.
 type Client struct {
 	httpClient     *http.Client
@@ -65,6 +74,7 @@ type Client struct {
 	timeout        time.Duration
 	maxRetries     int
 	retryBaseDelay time.Duration
+	retryDelays    []time.Duration
 }
 
 // NewClient creates a new subscription client with modern TLS defaults.
@@ -74,6 +84,7 @@ func NewClient(opts ...ClientOption) *Client {
 		timeout:        15 * time.Second,
 		maxRetries:     3,
 		retryBaseDelay: 500 * time.Millisecond,
+		retryDelays:    []time.Duration{5 * time.Second, 15 * time.Second, 60 * time.Second},
 	}
 
 	transport := &http.Transport{
@@ -124,10 +135,25 @@ func (c *Client) FetchSubscription(ctx context.Context, subURL string) (*Subscri
 		return nil, err
 	}
 
-	var resp *http.Response
-	var lastErr error
+	parsedTarget, _ := url.Parse(targetURL)
+	var host string
+	if parsedTarget != nil {
+		host = parsedTarget.Host
+	}
+	cabinetURL := ExtractCabinetURL(nil, targetURL)
 
-	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+	delays := c.retryDelays
+	if len(delays) == 0 {
+		delays = []time.Duration{5 * time.Second, 15 * time.Second, 60 * time.Second}
+	}
+	maxRetries := len(delays)
+	if c.maxRetries >= 0 {
+		maxRetries = c.maxRetries
+	}
+
+	var resp *http.Response
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create http request: %w", err)
@@ -142,11 +168,14 @@ func (c *Client) FetchSubscription(ctx context.Context, subURL string) (*Subscri
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
-			_ = resp.Body.Close()
-			if attempt < c.maxRetries {
-				sleepDuration := c.retryBaseDelay * (1 << attempt)
+			if attempt < maxRetries {
+				_ = resp.Body.Close()
+				sleepDuration := delays[len(delays)-1]
+				if attempt < len(delays) {
+					sleepDuration = delays[attempt]
+				}
 				if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-					if sec, err := strconv.Atoi(retryAfter); err == nil && sec > 0 {
+					if sec, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && sec >= 0 {
 						sleepDuration = time.Duration(sec) * time.Second
 					}
 				}
@@ -157,7 +186,33 @@ func (c *Client) FetchSubscription(ctx context.Context, subURL string) (*Subscri
 					return nil, ctx.Err()
 				}
 			}
-			return nil, ErrRateLimited
+
+			defer resp.Body.Close()
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+			var errResp struct {
+				Error      string `json:"error"`
+				Message    string `json:"message"`
+				CabinetURL string `json:"cabinet_url"`
+			}
+			_ = json.Unmarshal(bodyBytes, &errResp)
+			msg := errResp.Error
+			if msg == "" {
+				msg = errResp.Message
+			}
+			if msg == "" {
+				msg = "Rate limit exceeded. Try again later."
+			}
+			if errResp.CabinetURL != "" {
+				cabinetURL = strings.TrimRight(errResp.CabinetURL, "/")
+			}
+			return nil, &ServerError{
+				StatusCode: http.StatusTooManyRequests,
+				Code:       CodeRateLimited,
+				Message:    msg,
+				ServerHost: host,
+				CabinetURL: cabinetURL,
+				RawBody:    string(bodyBytes),
+			}
 		}
 
 		break
@@ -175,13 +230,94 @@ func (c *Client) FetchSubscription(ctx context.Context, subURL string) (*Subscri
 	case resp.StatusCode == http.StatusOK:
 		// Success, continue parsing below
 	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, ErrUnauthorized
-	case resp.StatusCode == http.StatusForbidden:
-		bodyLower := strings.ToLower(string(bodyBytes))
-		if strings.Contains(bodyLower, "expire") || strings.Contains(bodyLower, "истек") || strings.Contains(bodyLower, "истёк") {
-			return nil, fmt.Errorf("%w: expired", ErrForbidden)
+		var errData struct {
+			CabinetURL string `json:"cabinet_url"`
 		}
-		return nil, fmt.Errorf("%w: blocked or unauthorized", ErrForbidden)
+		_ = json.Unmarshal(bodyBytes, &errData)
+		if errData.CabinetURL != "" {
+			cabinetURL = strings.TrimRight(errData.CabinetURL, "/")
+		}
+		return nil, &ServerError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       CodeTokenRevoked,
+			Message:    "Токен подписки недействителен или был удален. Скопируйте новую ссылку в веб-панели.",
+			ServerHost: host,
+			CabinetURL: cabinetURL,
+			RawBody:    string(bodyBytes),
+		}
+	case resp.StatusCode == http.StatusForbidden:
+		var errData struct {
+			Error      string `json:"error"`
+			Message    string `json:"message"`
+			CabinetURL string `json:"cabinet_url"`
+			IsFrozen   any    `json:"is_frozen"`
+		}
+		_ = json.Unmarshal(bodyBytes, &errData)
+		if errData.CabinetURL != "" {
+			cabinetURL = strings.TrimRight(errData.CabinetURL, "/")
+		}
+
+		errText := strings.ToLower(errData.Error)
+		if errText == "" {
+			errText = strings.ToLower(errData.Message)
+		}
+		rawLower := strings.ToLower(string(bodyBytes))
+		frozenVal := parseFrozenValue(errData.IsFrozen)
+
+		isBlocked := frozenVal == 2 ||
+			strings.Contains(errText, "blocked") ||
+			strings.Contains(errText, "заблокирован") ||
+			strings.Contains(errText, "administrator") ||
+			strings.Contains(rawLower, "is_frozen: 2") ||
+			strings.Contains(rawLower, `"is_frozen": 2`) ||
+			strings.Contains(rawLower, `"is_frozen":2`) ||
+			strings.Contains(rawLower, "blocked") ||
+			strings.Contains(rawLower, "заблокирован") ||
+			strings.Contains(rawLower, "administrator")
+
+		isExpired := frozenVal == 1 ||
+			strings.Contains(errText, "expire") ||
+			strings.Contains(errText, "истек") ||
+			strings.Contains(errText, "истёк") ||
+			strings.Contains(errText, "renew") ||
+			strings.Contains(rawLower, "is_frozen: 1") ||
+			strings.Contains(rawLower, `"is_frozen": 1`) ||
+			strings.Contains(rawLower, `"is_frozen":1`) ||
+			strings.Contains(rawLower, "expire") ||
+			strings.Contains(rawLower, "истек") ||
+			strings.Contains(rawLower, "истёк") ||
+			strings.Contains(rawLower, "renew")
+
+		if isBlocked {
+			return nil, &ServerError{
+				StatusCode: http.StatusForbidden,
+				Code:       CodeAccountBlocked,
+				Message:    "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.",
+				ServerHost: host,
+				CabinetURL: cabinetURL,
+				RawBody:    string(bodyBytes),
+			}
+		}
+
+		if isExpired {
+			return nil, &ServerError{
+				StatusCode: http.StatusForbidden,
+				Code:       CodeSubExpired,
+				Message:    "Срок действия подписки истек. Продлите доступ в личном кабинете веб-панели.",
+				ServerHost: host,
+				CabinetURL: cabinetURL,
+				RawBody:    string(bodyBytes),
+			}
+		}
+
+		return nil, &ServerError{
+			StatusCode: http.StatusForbidden,
+			Code:       CodeAccountBlocked,
+			Message:    "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.",
+			ServerHost: host,
+			CabinetURL: cabinetURL,
+			RawBody:    string(bodyBytes),
+		}
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, ErrNotFound
 	case resp.StatusCode >= 500:
@@ -196,7 +332,6 @@ func (c *Client) FetchSubscription(ctx context.Context, subURL string) (*Subscri
 		return nil, err
 	}
 
-	_ = lastErr
 	return info, nil
 }
 

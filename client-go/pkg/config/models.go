@@ -79,6 +79,7 @@ type Settings struct {
 	AutoConnect       bool      `json:"auto_connect"`
 	AutoStart         bool      `json:"auto_start"`
 	CloseAction       string    `json:"close_action"` // "tray" (default) or "exit"
+	SilentTray        bool      `json:"silent_tray"`
 	Notifications     bool      `json:"notifications"`
 	CheckUpdates      bool      `json:"check_updates"`
 	KillSwitch        bool      `json:"kill_switch"`
@@ -88,6 +89,7 @@ type Settings struct {
 	SubscriptionUsername   string    `json:"subscription_username,omitempty"`
 	SubscriptionServer     string    `json:"subscription_server,omitempty"`
 	SubscriptionExpiresAt  time.Time `json:"subscription_expires_at,omitempty"`
+	SubscriptionStatus     string    `json:"subscription_status,omitempty"`
 	LastSyncTime           time.Time `json:"last_sync_time"`
 	Theme             string    `json:"theme"`
 	Language          string    `json:"language"`
@@ -99,6 +101,7 @@ func DefaultSettings() Settings {
 		AutoConnect:       false,
 		AutoStart:         false,
 		CloseAction:       "tray",
+		SilentTray:        false,
 		Notifications:     true,
 		CheckUpdates:      true,
 		KillSwitch:        false,

@@ -12,42 +12,69 @@
       --bg-card-hover: #182730;
       --bg-card-active: #15262c;
       --bg-input: #090e11;
-      --bg-pill: #1a252a;
+      --bg-pill: #131f26;
       
       --border-subtle: rgba(255, 255, 255, 0.08);
-      --border-medium: rgba(255, 255, 255, 0.14);
-      --border-highlight: rgba(255, 255, 255, 0.22);
-      --border-hover: rgba(255, 255, 255, 0.32);
+      --border-medium: rgba(255, 255, 255, 0.16);
+      --border-highlight: rgba(255, 255, 255, 0.28);
+      --border-hover: rgba(255, 255, 255, 0.40);
 
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
 
-      --accent-amber: #d97706;
-      --accent-amber-light: #f59e0b;
-      --accent-amber-glow: rgba(217, 119, 6, 0.35);
+      /* High-Contrast Cyberpunk Neon Palette */
+      --neon-amber: #f59e0b;
+      --neon-amber-light: #fbbf24;
+      --neon-amber-border: #fbbf24;
+      --neon-amber-glow: 0 0 16px rgba(245, 158, 11, 0.50);
+      --neon-amber-bg: rgba(245, 158, 11, 0.14);
 
       --neon-emerald: #10b981;
       --neon-emerald-light: #34d399;
-      --neon-emerald-glow: rgba(16, 185, 129, 0.35);
+      --neon-emerald-border: #34d399;
+      --neon-emerald-glow: 0 0 16px rgba(16, 185, 129, 0.55);
+      --neon-emerald-bg: rgba(16, 185, 129, 0.14);
 
+      --neon-cyan: #38bdf8;
+      --neon-cyan-light: #7dd3fc;
+      --neon-cyan-border: #06b6d4;
+      --neon-cyan-glow: 0 0 16px rgba(56, 189, 248, 0.50);
+      --neon-cyan-bg: rgba(56, 189, 248, 0.14);
+
+      --neon-purple: #c084fc;
+      --neon-purple-light: #d8b4fe;
+      --neon-purple-border: #a855f7;
+      --neon-purple-glow: 0 0 16px rgba(168, 85, 247, 0.50);
+      --neon-purple-bg: rgba(168, 85, 247, 0.14);
+
+      --neon-red: #f87171;
+      --neon-red-light: #fca5a5;
+      --neon-red-border: #ef4444;
+      --neon-red-glow: 0 0 16px rgba(239, 68, 68, 0.50);
+      --neon-red-bg: rgba(239, 68, 68, 0.14);
+
+      /* Legacy compatibility mappings */
+      --accent-amber: var(--neon-amber);
+      --accent-amber-light: var(--neon-amber-light);
+      --accent-amber-glow: var(--neon-amber-glow);
       --electric-cyan: #06b6d4;
-      --cyber-cyan: #38bdf8;
-      --cyber-cyan-glow: rgba(56, 189, 248, 0.30);
+      --cyber-cyan: var(--neon-cyan);
+      --cyber-cyan-glow: var(--neon-cyan-glow);
+      --sub-purple: var(--neon-purple-border);
+      --sub-purple-light: var(--neon-purple);
+      --sub-purple-bg: var(--neon-purple-bg);
+      --sub-purple-border: var(--neon-purple-border);
+      --coral-red: var(--neon-red-border);
+      --coral-red-light: var(--neon-red);
+      --coral-red-bg: var(--neon-red-bg);
+      --coral-red-border: var(--neon-red-border);
 
-      --sub-purple: #a855f7;
-      --sub-purple-light: #c084fc;
-      --sub-purple-bg: rgba(168, 85, 247, 0.14);
-      --sub-purple-border: rgba(168, 85, 247, 0.42);
-
-      --coral-red: #ef4444;
-      --coral-red-light: #f87171;
-      --coral-red-bg: rgba(239, 68, 68, 0.14);
-      --coral-red-border: rgba(239, 68, 68, 0.45);
-
-      --radius-sm: 6px;
-      --radius-md: 10px;
-      --radius-lg: 14px;
+      /* Balanced Radius Hierarchy */
+      --radius-sm: 6px;       /* Badges, tabs, mini action buttons */
+      --radius-md: 8px;       /* Standard buttons, form inputs, search bar */
+      --radius-lg: 14px;      /* Cards, modals, modal sections */
+      --radius-pill: 9999px;  /* Status indicators, counter chips, session timer */
       --radius-full: 9999px;
 
       --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
@@ -64,6 +91,12 @@
     .val-highlight, .sub-param-val, .sub-url-input, .telemetry-totals {
       user-select: text !important;
       -webkit-user-select: text !important;
+    }
+
+    input[type="checkbox"],
+    input[type="radio"] {
+      accent-color: #f59e0b;
+      cursor: pointer;
     }
 
     body {
@@ -360,20 +393,22 @@
         display: none !important;
       }
     }
-    @media (max-width: 820px) {
+    @media (max-width: 840px) {
       header.app-header {
         flex-wrap: wrap;
-        row-gap: 10px;
+        row-gap: 12px;
       }
       .header-right,
       .action-toolbar,
       .action-toolbar-right {
         width: 100%;
-        justify-content: flex-start;
+        justify-content: center;
+        gap: 8px;
+        row-gap: 8px;
       }
     }
 
-    /* Modern Buttons with Flat Non-Jumping Hovers */
+    /* Modern High-Contrast Cyberpunk Buttons */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -381,104 +416,128 @@
       gap: 7px;
       height: 34px;
       padding: 0 14px;
-      border: none;
+      border: 1px solid transparent;
       cursor: pointer;
       font-family: inherit;
       font-size: 12px;
       font-weight: 700;
-      border-radius: 8px;
-      transition: box-shadow 0.18s var(--ease-smooth),
-                  background 0.18s var(--ease-smooth),
-                  border-color 0.18s var(--ease-smooth);
+      border-radius: var(--radius-md);
+      transition: all 0.2s var(--ease-smooth);
       white-space: nowrap;
       position: relative;
+      box-sizing: border-box;
+      outline: none;
     }
     .btn:active {
       transform: translateY(1px) scale(0.985);
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.95) 0%, rgba(217, 119, 6, 0.95) 100%);
       color: #ffffff;
-      border: 1px solid #fbbf24;
-      box-shadow: 0 2px 10px rgba(217, 119, 6, 0.35);
+      border: 1px solid var(--neon-amber-border);
+      box-shadow: 0 2px 12px rgba(245, 158, 11, 0.35);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
     }
     .btn-primary:hover {
       background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-      box-shadow: 0 4px 16px rgba(245, 158, 11, 0.55);
+      border-color: #fde68a;
+      box-shadow: var(--neon-amber-glow);
+      color: #ffffff;
     }
 
     .btn-secondary {
-      background-color: #162228;
+      background-color: rgba(255, 255, 255, 0.05);
       color: #f1f5f9;
-      border: 1px solid #2c3e47;
+      border: 1px solid rgba(255, 255, 255, 0.16);
     }
     .btn-secondary:hover {
-      background-color: #22343e;
-      border-color: #425b68;
+      background-color: var(--neon-cyan-bg);
+      border-color: var(--neon-cyan);
       color: #ffffff;
+      box-shadow: var(--neon-cyan-glow);
     }
 
     .btn-secondary-sub {
-      background-color: var(--sub-purple-bg);
-      color: var(--sub-purple-light);
-      border: 1px solid var(--sub-purple-border);
+      background-color: var(--neon-purple-bg);
+      color: var(--neon-purple);
+      border: 1px solid var(--neon-purple-border);
     }
     .btn-secondary-sub:hover {
-      background-color: rgba(168, 85, 247, 0.25);
-      border-color: #c084fc;
+      background-color: rgba(168, 85, 247, 0.26);
+      border-color: var(--neon-purple-light);
       color: #ffffff;
-      box-shadow: 0 0 14px rgba(168, 85, 247, 0.3);
+      box-shadow: var(--neon-purple-glow);
     }
 
     .btn-connect {
-      background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
       color: #ffffff;
       font-size: 12px;
       font-weight: 700;
-      height: 33px;
+      height: 34px;
       padding: 0 16px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--neon-emerald-border);
       min-width: 110px;
-      box-shadow: 0 2px 10px rgba(16, 185, 129, 0.28);
+      box-shadow: 0 2px 12px rgba(16, 185, 129, 0.35);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
     }
     .btn-connect:hover {
-      background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
-      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45);
+      background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+      border-color: #6ee7b7;
+      box-shadow: var(--neon-emerald-glow);
     }
 
     .btn-disconnect {
-      background-color: var(--coral-red-bg);
-      color: #fca5a5;
+      background-color: var(--neon-red-bg);
+      color: var(--neon-red-light);
       font-size: 12px;
       font-weight: 700;
-      height: 33px;
+      height: 34px;
       padding: 0 16px;
-      border-radius: 8px;
-      border: 1px solid var(--coral-red-border);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--neon-red-border);
       min-width: 110px;
     }
     .btn-disconnect:hover {
-      background-color: rgba(239, 68, 68, 0.26);
-      border-color: #ef4444;
+      background-color: rgba(239, 68, 68, 0.28);
+      border-color: #f87171;
       color: #ffffff;
-      box-shadow: 0 0 14px rgba(239, 68, 68, 0.35);
+      box-shadow: var(--neon-red-glow);
     }
 
     .btn-xs {
-      height: 25px;
-      padding: 0 9px;
+      height: 26px;
+      padding: 0 10px;
       font-size: 11px;
-      border-radius: 5px;
-      background: #1a252a;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
       color: #cbd5e1;
-      border: 1px solid #334852;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-smooth);
     }
     .btn-xs:hover {
-      background: #24353d;
-      border-color: #4b6877;
+      background: var(--neon-cyan-bg);
+      border-color: var(--neon-cyan);
       color: #ffffff;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+    }
+    .btn-xs.btn-danger-xs {
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    .btn-xs.btn-danger-xs:hover {
+      background: var(--neon-red-bg);
+      border-color: var(--neon-red-border);
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
     }
 
     /* Sub-bar for Section Heading & Live Filtering */
@@ -505,13 +564,14 @@
     }
 
     .count-badge {
-      background-color: rgba(245, 158, 11, 0.12);
-      color: #f59e0b;
+      background-color: var(--neon-amber-bg);
+      color: var(--neon-amber);
       font-size: 11px;
       font-weight: 800;
-      border: 1px solid rgba(245, 158, 11, 0.32);
-      border-radius: 10px;
+      border: 1px solid var(--neon-amber-border);
+      border-radius: var(--radius-pill);
       padding: 1px 8px;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
     }
 
     .sub-bar-right {
@@ -526,10 +586,10 @@
       align-items: center;
     }
     .search-input {
-      background: #10191f;
-      border: 1px solid #24353f;
-      border-radius: 6px;
-      padding: 5px 28px 5px 10px;
+      background: #090e11;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-md);
+      padding: 6px 28px 6px 12px;
       color: #e2e8f0;
       font-family: inherit;
       font-size: 11.5px;
@@ -539,9 +599,9 @@
     }
     .search-input:focus {
       width: 230px;
-      border-color: #f59e0b;
-      background: #090e11;
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+      border-color: var(--neon-amber);
+      background: #060a0c;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
     }
     .search-icon {
       position: absolute;
@@ -598,28 +658,53 @@
 
     .vpn-profile-card:hover {
       background: linear-gradient(180deg, #1a2830 0%, #121c22 100%);
-      border-color: rgba(245, 158, 11, 0.45);
-      border-top-color: rgba(251, 191, 36, 0.70);
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65), 0 0 14px rgba(245, 158, 11, 0.12);
-      /* Zero transform translateY or scale to prevent overlapping */
+      border-color: var(--neon-amber);
+      border-top-color: #fde68a;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(245, 158, 11, 0.25);
     }
 
     .vpn-profile-card.active-connected {
-      border: 1px solid rgba(16, 185, 129, 0.50);
-      border-top: 1px solid rgba(52, 211, 153, 0.90);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 10px rgba(16, 185, 129, 0.20);
+      border: 1px solid var(--neon-emerald-border);
+      border-top: 1px solid #6ee7b7;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-emerald-glow);
     }
 
     .vpn-profile-card.active-connecting {
-      border: 1px solid rgba(245, 158, 11, 0.50);
-      border-top: 1px solid rgba(251, 191, 36, 0.90);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 10px rgba(245, 158, 11, 0.20);
+      border: 1px solid var(--neon-amber-border);
+      border-top: 1px solid #fde68a;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-amber-glow);
     }
 
     .vpn-profile-card.active-error {
-      border: 1px solid rgba(239, 68, 68, 0.50);
-      border-top: 1px solid rgba(248, 113, 113, 0.90);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 10px rgba(239, 68, 68, 0.20);
+      border: 1px solid var(--neon-red-border);
+      border-top: 1px solid #fca5a5;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6), var(--neon-red-glow);
+    }
+
+    .vpn-profile-card.card-frozen {
+      border: 1px solid var(--neon-cyan-border) !important;
+      border-top: 1px solid #7dd3fc !important;
+      background: linear-gradient(180deg, #122129 0%, #0d171d 100%) !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.5), 0 0 16px rgba(56, 189, 248, 0.18) !important;
+    }
+    .vpn-profile-card.card-frozen.card-blocked {
+      border: 1px solid var(--neon-red-border) !important;
+      border-top: 1px solid #fca5a5 !important;
+      background: linear-gradient(180deg, #241212 0%, #170d0d 100%) !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.5), 0 0 16px rgba(239, 68, 68, 0.25) !important;
+    }
+    .vpn-profile-card.card-frozen:not(.active-connected):not(.active-connecting) {
+      opacity: 0.85;
+    }
+    .vpn-profile-card.card-frozen:hover {
+      border-color: #7dd3fc !important;
+      border-top-color: #e0f2fe !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), var(--neon-cyan-glow) !important;
+    }
+    .vpn-profile-card.card-frozen.card-blocked:hover {
+      border-color: #f87171 !important;
+      border-top-color: #fecaca !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), var(--neon-red-glow) !important;
     }
 
     /* Card Top Row */
@@ -695,6 +780,33 @@
       letter-spacing: -0.2px;
     }
 
+    .badge-frozen {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+      white-space: nowrap;
+      text-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+    }
+    .badge-frozen.badge-blocked {
+      background: rgba(239, 68, 68, 0.18) !important;
+      border-color: rgba(239, 68, 68, 0.5) !important;
+      color: #f87171 !important;
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.6) !important;
+    }
+    .badge-frozen.badge-revoked {
+      background: rgba(239, 68, 68, 0.15) !important;
+      border-color: rgba(239, 68, 68, 0.4) !important;
+      color: #fca5a5 !important;
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.4) !important;
+    }
+
     .split-badge {
       font-size: 10px;
       font-weight: 700;
@@ -748,6 +860,20 @@
     .card-status-badge.connected { color: #34d399; }
     .card-status-badge.connecting { color: #f59e0b; }
     .card-status-badge.error { color: #f87171; }
+    .card-status-badge.frozen {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 6px;
+      padding: 2px 7px;
+    }
+    .card-status-badge.blocked {
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 6px;
+      padding: 2px 7px;
+    }
 
     /* Card Details Row */
     .card-details-row {
@@ -827,12 +953,12 @@
       flex-wrap: wrap;
     }
 
-    /* Left Block: Connection Status Pill + Active Tunnel Chip + Subtext */
+    /* Left Block: Connection Status Pill + Active Tunnel Chip */
     .dock-left {
       display: flex;
       align-items: center;
       gap: 10px;
-      flex: 1 1 auto;
+      flex: 1 1 0;
       min-width: 0;
       flex-wrap: wrap;
     }
@@ -840,67 +966,72 @@
     .status-pill {
       font-size: 11.5px;
       font-weight: 700;
-      border-radius: 8px;
-      padding: 5px 11px;
+      border-radius: var(--radius-pill);
+      padding: 5px 13px;
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       flex-shrink: 0;
       transition: all 0.2s var(--ease-smooth);
     }
     .status-pill .status-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
     }
 
     .status-pill.disconnected {
-      background: rgba(148, 163, 184, 0.09);
+      background: rgba(148, 163, 184, 0.08);
       color: #94a3b8;
-      border: 1px solid rgba(148, 163, 184, 0.22);
+      border: 1px solid rgba(148, 163, 184, 0.25);
     }
     .status-pill.disconnected .status-dot { background: #64748b; }
 
     .status-pill.connecting {
-      background: rgba(245, 158, 11, 0.15);
+      background: var(--neon-amber-bg);
       color: #fbbf24;
-      border: 1px solid rgba(245, 158, 11, 0.40);
+      border: 1px solid var(--neon-amber-border);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
     }
     .status-pill.connecting .status-dot {
       background: #fbbf24;
-      box-shadow: 0 0 6px #fbbf24;
+      box-shadow: 0 0 8px #fbbf24;
       animation: pulse-dot 1s infinite ease-in-out;
     }
 
     .status-pill.connected {
-      background: rgba(16, 185, 129, 0.15);
+      background: var(--neon-emerald-bg);
       color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.42);
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.22);
+      border: 1px solid var(--neon-emerald-border);
+      box-shadow: var(--neon-emerald-glow);
     }
     .status-pill.connected .status-dot {
       background: #34d399;
-      box-shadow: 0 0 6px #34d399;
+      box-shadow: 0 0 8px #34d399;
       animation: pulse-dot 2s infinite ease-in-out;
     }
 
     .status-pill.error {
-      background: var(--coral-red-bg);
+      background: var(--neon-red-bg);
       color: #fca5a5;
-      border: 1px solid var(--coral-red-border);
+      border: 1px solid var(--neon-red-border);
+      box-shadow: var(--neon-red-glow);
     }
-    .status-pill.error .status-dot { background: #ef4444; }
+    .status-pill.error .status-dot {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
 
     /* Dedicated Active Tunnel Chip */
     .active-tunnel-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: #0b1216;
-      border: 1px solid #23353e;
-      border-radius: 8px;
-      padding: 4px 10px;
+      background: #090e11;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-md);
+      padding: 4px 11px;
       font-size: 11.5px;
       font-weight: 700;
       color: #cbd5e1;
@@ -910,9 +1041,17 @@
       transition: all 0.2s var(--ease-smooth);
     }
     .active-tunnel-chip.connected {
-      border-color: rgba(16, 185, 129, 0.35);
-      background: rgba(16, 185, 129, 0.08);
+      border-color: var(--neon-emerald-border);
+      background: var(--neon-emerald-bg);
       color: #e2e8f0;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+    .tunnel-chip-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
+      flex-shrink: 0;
     }
     .tunnel-chip-name {
       overflow: hidden;
@@ -958,32 +1097,62 @@
       }
     }
 
-    /* Center Block: Session Timer */
+    /* Center Block: Footer Link */
     .dock-center {
+      flex: 0 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+    }
+
+    .dock-footer-link {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 4px;
+      transition: color 0.2s ease, background 0.2s ease;
+      letter-spacing: 0.2px;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .dock-footer-link:hover {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      text-decoration: underline;
+    }
+    .dock-footer-link:active {
+      transform: scale(0.98);
     }
 
     .timer-pill {
-      background-color: rgba(245, 158, 11, 0.10);
-      color: #f59e0b;
-      border: 1px solid rgba(245, 158, 11, 0.28);
-      border-radius: 8px;
-      padding: 4px 12px;
+      background-color: var(--neon-amber-bg);
+      color: var(--neon-amber);
+      border: 1px solid var(--neon-amber-border);
+      border-radius: var(--radius-pill);
+      padding: 4px 14px;
       font-family: "Cascadia Code", Consolas, monospace;
       font-weight: 700;
       font-size: 12px;
       white-space: nowrap;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.22);
     }
 
-    /* Right Block: Log drawer button */
+    /* Right Block: Session Timer & Log drawer button */
     .dock-right {
+      flex: 1 1 0;
+      min-width: 0;
+      justify-content: flex-end;
       display: flex;
       align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
+      gap: 10px;
     }
 
     .log-drawer-btn {
@@ -1252,6 +1421,17 @@
       flex-shrink: 0;
       overflow: visible;
     }
+    #btn-start-update {
+      background: linear-gradient(135deg, #0891b2, #06b6d4);
+      border-color: #38bdf8;
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+    }
+    #btn-start-update:hover {
+      background: linear-gradient(135deg, #06b6d4, #22d3ee);
+      border-color: #67e8f9;
+      box-shadow: 0 0 18px rgba(6, 182, 212, 0.65);
+    }
 
     /* Modern Tab Navigation inside Add & Edit Modals */
     .modal-tabs-nav {
@@ -1286,10 +1466,10 @@
       background: rgba(255, 255, 255, 0.04);
     }
     .modal-tab-btn.active {
-      background: #1a252a;
+      background: var(--neon-amber-bg);
       color: #fbbf24;
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--neon-amber);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.30);
     }
 
     .modal-tab-panel {
@@ -1325,8 +1505,8 @@
 
     .form-input {
       background: #090e11;
-      border: 1px solid #24353f;
-      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-md);
       color: #f1f5f9;
       padding: 8px 12px;
       font-family: inherit;
@@ -1335,14 +1515,15 @@
       transition: border-color 0.18s var(--ease-smooth), box-shadow 0.18s var(--ease-smooth);
     }
     .form-input:focus {
-      border-color: #f59e0b;
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
+      border-color: var(--neon-amber);
+      background: #060a0c;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
     }
 
     .form-textarea {
       background: #090e11;
-      border: 1px solid #24353f;
-      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-md);
       color: #f1f5f9;
       padding: 10px 12px;
       font-family: "Cascadia Code", Consolas, monospace;
@@ -1354,8 +1535,9 @@
       transition: border-color 0.18s var(--ease-smooth), box-shadow 0.18s var(--ease-smooth);
     }
     .form-textarea:focus {
-      border-color: #f59e0b;
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
+      border-color: var(--neon-amber);
+      background: #060a0c;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
     }
 
     .form-grid-2 {
@@ -1372,29 +1554,35 @@
 
     /* Explanation Banner */
     .info-callout {
-      background: rgba(6, 182, 212, 0.08);
-      border: 1px solid rgba(6, 182, 212, 0.25);
-      border-radius: 8px;
+      background: var(--neon-cyan-bg);
+      border: 1px solid var(--neon-cyan-border);
+      border-radius: var(--radius-md);
       padding: 9px 12px;
       font-size: 11px;
       color: #94a3b8;
       line-height: 1.45;
     }
     .info-callout strong {
-      color: #38bdf8;
+      color: var(--neon-cyan);
     }
 
     /* Switch toggle */
     .switch-card {
       background: #0c1215;
-      border: 1px solid #24353f;
-      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-md);
       padding: 10px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
       cursor: pointer;
+      transition: all 0.2s var(--ease-smooth);
+    }
+    .switch-card:hover {
+      border-color: rgba(245, 158, 11, 0.50);
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.16);
+      background: #0f161b;
     }
     .switch-info {
       display: flex;
@@ -1421,10 +1609,10 @@
     }
     .proto-select-btn {
       flex: 1;
-      background: #141c22;
-      border: 1px solid #283941;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       color: var(--text-muted);
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       padding: 7px 12px;
       font-size: 11.5px;
       font-weight: 700;
@@ -1435,9 +1623,16 @@
       gap: 6px;
       transition: all 0.18s var(--ease-smooth);
     }
+    .proto-select-btn:hover {
+      border-color: var(--neon-amber);
+      color: #fff;
+    }
     .proto-select-btn.active {
-      background: rgba(245, 158, 11, 0.18);
-      border-color: #f59e0b;
+      background: var(--neon-amber-bg);
+      border-color: var(--neon-amber);
+      color: #fbbf24;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.30);
+    }
       color: #fbbf24;
     }
 
@@ -1468,13 +1663,29 @@
     }
 
     .sub-status-pill {
-      color: #34d399;
+      color: #10b981;
       background-color: rgba(16, 185, 129, 0.14);
       border: 1px solid rgba(16, 185, 129, 0.35);
       border-radius: 10px;
       padding: 3px 10px;
       font-weight: 700;
       font-size: 11px;
+      transition: all 0.2s ease;
+    }
+    .sub-status-pill.active {
+      color: #10b981;
+      background-color: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .sub-status-pill.expiring {
+      color: #fbbf24;
+      background-color: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .sub-status-pill.expired {
+      color: #ef4444;
+      background-color: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
     .sub-grid-params {
@@ -1502,7 +1713,13 @@
       white-space: nowrap;
     }
     .sub-param-val.emerald {
-      color: #34d399;
+      color: #10b981;
+    }
+    .sub-param-val.amber {
+      color: #fbbf24;
+    }
+    .sub-param-val.red {
+      color: #ef4444;
     }
 
     .sub-url-box {
@@ -1513,7 +1730,11 @@
 
     .sub-url-label {
       font-size: 11px;
+      font-weight: 600;
       color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
 
     .sub-url-input-row {
@@ -1525,15 +1746,18 @@
       flex: 1;
       background: #090e11;
       border: 1px solid #283941;
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-md);
       color: #cbd5e1;
       padding: 8px 12px;
       font-family: inherit;
       font-size: 12px;
       outline: none;
+      transition: all 0.2s var(--ease-smooth);
     }
     .sub-url-input:focus {
-      border-color: #a855f7;
+      border-color: var(--neon-purple);
+      background: #060a0c;
+      box-shadow: var(--neon-purple-glow);
     }
 
     .sub-profiles-list {
@@ -1544,7 +1768,7 @@
       overflow-y: auto;
       background: #090e11;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
+      border-radius: var(--radius-lg);
       padding: 10px;
     }
 
@@ -1555,7 +1779,7 @@
       padding: 8px 12px;
       background: #141c22;
       border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
     }
 
     .sub-profile-left {
@@ -1590,25 +1814,58 @@
     }
 
     .btn-danger-sub {
-      border-color: var(--coral-red-border) !important;
+      background: var(--neon-red-bg) !important;
+      border: 1px solid var(--neon-red-border) !important;
       color: #fca5a5 !important;
       flex-shrink: 0;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.2) !important;
     }
     .btn-danger-sub:hover {
-      background-color: var(--coral-red-bg) !important;
+      background-color: rgba(239, 68, 68, 0.28) !important;
       color: #ffffff !important;
-      border-color: #ef4444 !important;
+      border-color: #f87171 !important;
+      box-shadow: var(--neon-red-glow) !important;
     }
 
     .btn-cabinet {
-      color: #38bdf8 !important;
-      border-color: rgba(56, 189, 248, 0.4) !important;
+      background: var(--neon-cyan-bg) !important;
+      border: 1px solid var(--neon-cyan-border) !important;
+      color: var(--neon-cyan) !important;
       flex-shrink: 0;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.2) !important;
     }
     .btn-cabinet:hover {
-      background-color: rgba(6, 182, 212, 0.18) !important;
-      border-color: #38bdf8 !important;
+      background-color: rgba(56, 189, 248, 0.26) !important;
+      border-color: #7dd3fc !important;
       color: #ffffff !important;
+      box-shadow: var(--neon-cyan-glow) !important;
+    }
+
+    .btn-sync-sub {
+      background: var(--neon-purple-bg) !important;
+      border: 1px solid var(--neon-purple-border) !important;
+      color: var(--neon-purple) !important;
+      flex-shrink: 0;
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.2) !important;
+    }
+    .btn-sync-sub:hover {
+      background-color: rgba(168, 85, 247, 0.28) !important;
+      border-color: #d8b4fe !important;
+      color: #ffffff !important;
+      box-shadow: var(--neon-purple-glow) !important;
+    }
+
+    .btn-close-sub {
+      background: rgba(255, 255, 255, 0.05) !important;
+      border: 1px solid rgba(255, 255, 255, 0.18) !important;
+      color: #cbd5e1 !important;
+      flex-shrink: 0;
+    }
+    .btn-close-sub:hover {
+      background-color: rgba(255, 255, 255, 0.12) !important;
+      border-color: rgba(255, 255, 255, 0.38) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.20) !important;
     }
 
     .sub-modal-foot .btn,
@@ -1616,10 +1873,13 @@
       white-space: nowrap;
       min-width: max-content;
       flex-shrink: 0;
-      padding: 0 11px;
-      font-size: 11.5px;
-      height: 32px;
+      padding: 0 14px;
+      font-size: 12px;
+      font-weight: 700;
+      height: 34px;
+      border-radius: var(--radius-md);
       overflow: visible;
+      transition: all 0.2s var(--ease-smooth);
     }
 
     /* Live Configuration Validation Bar */
@@ -1628,23 +1888,54 @@
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       white-space: nowrap;
       transition: all 0.2s var(--ease-smooth);
     }
     .conn-validation-status.valid {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.35);
+      background: var(--neon-emerald-bg);
+      border-color: var(--neon-emerald-border);
       color: #34d399;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
     }
-    .conn-validation-status.invalid {
-      background: rgba(245, 158, 11, 0.12);
-      border-color: rgba(245, 158, 11, 0.35);
+    .conn-validation-status.invalid,
+    .conn-validation-status.warning {
+      background: var(--neon-amber-bg);
+      border-color: var(--neon-amber-border);
       color: #fbbf24;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+    }
+    .conn-validation-status.checking {
+      background: var(--neon-cyan-bg);
+      border-color: var(--neon-cyan-border);
+      color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+    }
+    .conn-validation-status.error {
+      background: var(--neon-red-bg);
+      border-color: var(--neon-red-border);
+      color: #f87171;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+    }
+    .validation-spinner {
+      color: #60a5fa;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .validation-success {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .validation-error {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
 
     @media (max-width: 680px) {
@@ -1844,35 +2135,152 @@
       box-shadow: 0 0 14px rgba(239, 68, 68, 0.4);
     }
 
+    /* =========================================================
+       CUSTOM CONFIRM DIALOG (Cyberpunk / Modern High-Contrast)
+       ========================================================= */
+    #confirm-modal {
+      z-index: 12000;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+    }
+    #confirm-modal.open {
+      display: flex;
+    }
+    .confirm-dialog-box {
+      width: min(440px, calc(100vw - 32px)) !important;
+      background: #0b1115 !important;
+      border: 1px solid var(--neon-red-border) !important;
+      border-radius: var(--radius-lg) !important;
+      box-shadow: 0 0 32px rgba(239, 68, 68, 0.28), 0 20px 50px rgba(0, 0, 0, 0.9) !important;
+      animation: modal-appear 0.2s var(--ease-smooth);
+      margin: auto;
+    }
+    .confirm-dialog-head {
+      background: #0f171d !important;
+      padding: 14px 18px !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    .confirm-icon-chip {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      background: var(--neon-red-bg);
+      border: 1px solid var(--neon-red-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #f87171;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+      flex-shrink: 0;
+    }
+    .confirm-dialog-body {
+      padding: 20px 22px !important;
+      background: #0b1115 !important;
+    }
+    .confirm-dialog-msg-text {
+      font-size: 13px;
+      line-height: 1.55;
+      color: #cbd5e1;
+    }
+    .confirm-dialog-msg-text b {
+      color: #ffffff;
+      font-weight: 700;
+    }
+    .confirm-dialog-foot {
+      padding: 12px 18px !important;
+      background: #090e11 !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+      display: flex !important;
+      justify-content: flex-end !important;
+      gap: 10px !important;
+    }
+    .btn-danger-action {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      border: 1px solid #ef4444;
+      color: #ffffff;
+      font-weight: 700;
+      height: 34px;
+      padding: 0 16px;
+      border-radius: var(--radius-md);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s var(--ease-smooth);
+    }
+    .btn-danger-action:hover {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border-color: #f87171;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.65);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
     /* Modern Toast Notifications */
     .toast-container {
       position: fixed;
-      top: 20px;
+      top: 18px;
       right: 20px;
       z-index: 999999;
       display: flex;
       flex-direction: column;
+      align-items: flex-end;
       gap: 10px;
       pointer-events: none;
+      max-width: calc(100vw - 40px);
     }
     .toast-message {
       pointer-events: auto;
-      background: rgba(18, 25, 30, 0.95);
-      backdrop-filter: blur(14px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(18, 25, 30, 0.96);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
       border-radius: 10px;
-      padding: 12px 18px;
+      padding: 9px 14px 9px 16px;
       color: #f1f5f9;
       font-size: 13px;
       font-weight: 500;
-      display: flex;
+      line-height: 1.35;
+      display: inline-flex;
       align-items: center;
       gap: 10px;
-      min-width: 280px;
-      max-width: 440px;
-      animation: toastSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      transition: all 0.25s ease;
+      min-width: 260px;
+      max-width: min(calc(100vw - 40px), 960px);
+      width: max-content;
+      box-sizing: border-box;
+      animation: toastSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      transition: opacity 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+                  transform 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+                  border-color 0.24s ease,
+                  box-shadow 0.24s ease,
+                  max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                  padding 0.28s ease,
+                  margin 0.28s ease;
+      overflow: hidden;
+    }
+    .toast-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+      transition: transform 0.2s ease;
+    }
+    @keyframes toastPulse {
+      0% {
+        transform: scale(1);
+      }
+      40% {
+        transform: scale(1.025);
+      }
+      100% {
+        transform: scale(1);
+      }
+    }
+    .toast-message.toast-updated {
+      animation: toastPulse 0.28s ease-out;
     }
     .toast-message.success {
       border-color: rgba(16, 185, 129, 0.5);
@@ -1882,21 +2290,35 @@
       border-color: rgba(239, 68, 68, 0.5);
       box-shadow: 0 8px 32px rgba(239, 68, 68, 0.22);
     }
+    .toast-message.warning {
+      border-color: rgba(245, 158, 11, 0.5);
+      box-shadow: 0 8px 32px rgba(245, 158, 11, 0.22);
+    }
     .toast-message.info {
       border-color: rgba(56, 189, 248, 0.5);
       box-shadow: 0 8px 32px rgba(56, 189, 248, 0.22);
+    }
+    .toast-message.disconnected {
+      border-color: rgba(148, 163, 184, 0.4);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+    }
+    .toast-text {
+      flex: 1 1 auto;
+      line-height: 1.35;
+      white-space: normal;
     }
     .toast-action-btn {
       background: rgba(6, 182, 212, 0.25);
       color: #38bdf8;
       border: 1px solid rgba(6, 182, 212, 0.4);
       border-radius: 6px;
-      padding: 2px 8px;
+      padding: 3px 10px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
       white-space: nowrap;
-      margin-left: 8px;
+      margin-left: 6px;
+      flex-shrink: 0;
       transition: all 0.2s ease;
     }
     .toast-action-btn:hover {
@@ -1904,12 +2326,46 @@
       color: #ffffff;
       border-color: #38bdf8;
     }
+    .toast-close-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.40);
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 4px;
+      flex-shrink: 0;
+      transition: color 0.18s ease, background 0.18s ease;
+    }
+    .toast-close-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .toast-message.toast-hiding {
+      opacity: 0 !important;
+      transform: translateY(-10px) scale(0.93) !important;
+      max-height: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin-top: -5px !important;
+      margin-bottom: -5px !important;
+      pointer-events: none !important;
+    }
     @keyframes toastSlideIn {
-      from {
+      0% {
         opacity: 0;
-        transform: translateY(-12px) scale(0.96);
+        transform: translateY(-16px) scale(0.95);
       }
-      to {
+      60% {
+        opacity: 1;
+        transform: translateY(2px) scale(1.01);
+      }
+      100% {
         opacity: 1;
         transform: translateY(0) scale(1);
       }
@@ -1950,7 +2406,7 @@
           <div class="brand-text-col">
             <div class="brand-title-row">
               <span class="brand-name">БобрДобр VPN</span>
-              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.2.2</span>
+              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.3.0</span>
               <span class="update-badge" id="app-update-badge" style="display:none;" onclick="openModal('update-modal')">🚀 Обновление</span>
             </div>
           </div>
@@ -1968,7 +2424,10 @@
           <span>Настройки</span>
         </button>
         <button class="btn btn-primary" id="btn-add-profile" title="Создать новое VPN подключение">
-          <span style="font-size:15px; font-weight:800; line-height:1;">+</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
           <span>Создать подключение</span>
         </button>
       </div>
@@ -2027,7 +2486,7 @@
       </div>
       <div class="logs-content" id="logs-console">
         <div class="log-row" data-tag="БОБР">
-          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема BobrDobr VPN v1.2.2 готова к работе.
+          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема БобрДобр VPN v1.3.0 готова к работе.
         </div>
       </div>
       <div class="logs-empty-state" id="logs-empty-filter" style="display:none;">
@@ -2036,30 +2495,32 @@
     </div>
 
     <!-- =======================================================
-         4. Bottom Dock (Refactored: Status, Active Tunnel, Timer, Logs)
+         4. Bottom Dock (Refactored: Status, Active Tunnel, Updates, Timer, Logs)
          ======================================================= -->
     <div class="bottom-dock">
-      <!-- Left Block: Status Pill + Active Tunnel Chip + Subtext -->
+      <!-- Left Block: Status Pill + Active Tunnel Chip -->
       <div class="dock-left">
         <div class="status-pill disconnected" id="dock-status-pill">
           <span class="status-dot"></span>
           <span id="dock-status-pill-text">Не защищено</span>
         </div>
         <div class="active-tunnel-chip" id="dock-tunnel-chip" title="Активный VPN туннель">
-          <span style="color:#fbbf24; font-size:11px;">⚡</span>
+          <span class="tunnel-chip-icon" id="dock-tunnel-icon"><svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#64748b" stroke-width="1.8"/></svg></span>
           <span class="tunnel-chip-name" id="dock-tunnel-name">Плотина не построена</span>
           <span class="tunnel-chip-adapter" id="dock-tunnel-adapter" style="display:none;">bobr0</span>
         </div>
-        <div class="dock-subtext" id="dock-subtext" title="Состояние виртуального туннеля и сетевого шлюза">Трафик открыт</div>
       </div>
 
-      <!-- Center Block: Session Timer -->
+      <!-- Center Block: Footer link -->
       <div class="dock-center">
-        <div class="timer-pill" id="session-timer" title="Время гидросессии">⏱ 00:00:00</div>
+        <button class="dock-footer-link" id="dock-btn-check-update" title="Проверить наличие обновлений" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000, null, null, 'update'); callGo('checkUpdate')">
+          БобрДобр™ VPN
+        </button>
       </div>
 
-      <!-- Right Block: Log Drawer Toggle -->
+      <!-- Right Block: Session Timer + Log Drawer Toggle -->
       <div class="dock-right">
+        <div class="timer-pill" id="session-timer" title="Время гидросессии">⏱ 00:00:00</div>
         <button class="btn btn-secondary log-drawer-btn" id="btn-toggle-logs" title="Открыть журнал системных событий">
           <svg class="log-btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 17 10 11 4 5"></polyline>
@@ -2090,7 +2551,7 @@
           </svg>
           <div>
             <div class="modal-title-main">Управление подпиской</div>
-            <div class="modal-subtitle-main">BobrDobr VPN Subscription & Hydro-engineering Center</div>
+            <div class="modal-subtitle-main">Центр управления подпиской БобрДобр VPN</div>
           </div>
         </div>
         <button class="modal-close-x" onclick="closeModal('sub-modal')">✕</button>
@@ -2101,7 +2562,7 @@
         <div class="sub-section-card">
           <div class="sub-section-header">
             <span class="sub-section-title">Параметры подписки</span>
-            <span class="sub-status-pill">● Активна</span>
+            <span class="sub-status-pill active" id="sub-modal-status-pill">● Активна</span>
           </div>
           <div class="sub-grid-params">
             <div class="sub-param-item">
@@ -2114,17 +2575,17 @@
             </div>
             <div class="sub-param-item">
               <span>👤 Пользователь:</span>
-              <span class="sub-param-val" id="sub-param-user">Egor</span>
+              <span class="sub-param-val" id="sub-param-user">—</span>
             </div>
             <div class="sub-param-item">
               <span>🌐 Сервер:</span>
-              <span class="sub-param-val" id="sub-param-server">bobr.netphoenix.ru</span>
+              <span class="sub-param-val" id="sub-param-server">vpn.example.com</span>
             </div>
           </div>
           <div class="sub-url-box">
-            <span class="sub-url-label">Ссылка подписки:</span>
+            <span class="sub-url-label">🔗 Ссылка подписки:</span>
             <div class="sub-url-input-row">
-              <input type="text" class="sub-url-input" id="sub-modal-input" placeholder="https://persona.netphoenix.ru/api/sub/...">
+              <input type="text" class="sub-url-input" id="sub-modal-input" placeholder="https://vpn.example.com/api/v1/sub/...">
               <button class="btn btn-secondary" id="btn-copy-sub-url">📋 Скопировать</button>
             </div>
           </div>
@@ -2140,13 +2601,13 @@
 
       </div>
       <div class="modal-foot sub-modal-foot">
-        <button class="btn btn-secondary btn-danger-sub" id="btn-delete-sub-action">
+        <button class="btn btn-danger-sub" id="btn-delete-sub-action">
           🗑️ Удалить подписку
         </button>
         <div class="sub-modal-foot-actions">
-          <button class="btn btn-secondary btn-cabinet" onclick="callGo('openCabinet')">Личный кабинет ↗</button>
-          <button class="btn btn-secondary-sub" id="btn-sync-sub-action">🔄 Обновить подписку</button>
-          <button class="btn btn-secondary" onclick="closeModal('sub-modal')">Закрыть</button>
+          <button class="btn btn-cabinet" onclick="callGo('openCabinet')">Личный кабинет ↗</button>
+          <button class="btn btn-sync-sub" id="btn-sync-sub-action">🔄 Обновить подписку</button>
+          <button class="btn btn-close-sub" onclick="closeModal('sub-modal')">Закрыть</button>
         </div>
       </div>
     </div>
@@ -2263,20 +2724,16 @@
               <span>Ссылка на подписку (URL): *</span>
             </label>
             <div style="display:flex; gap:8px;">
-              <input type="text" class="form-input" id="new-sub-url" placeholder="https://domain.com/api/sub/..." style="flex:1;">
+              <input type="text" class="form-input" id="new-sub-url" placeholder="https://vpn.example.com/api/v1/sub/..." style="flex:1;">
               <button class="btn btn-secondary" type="button" id="btn-paste-sub-url" title="Вставить из буфера обмена">
                 📋 Вставить ссылку
               </button>
-              <button class="btn btn-secondary" type="button" id="btn-check-sub-status" title="Проверить доступность сервера подписки">
-                🔍 Проверить статус
-              </button>
             </div>
-            <div id="new-sub-status-result" class="sub-status-box" style="display:none;"></div>
           </div>
 
           <div class="sub-features-note" style="background:#090e11; border:1px solid #1a2730; border-radius:8px; padding:12px 14px; font-size:11.5px; color:#94a3b8; display:flex; flex-direction:column; gap:6px;">
             <div style="display:flex; align-items:center; gap:6px; color:#cbd5e1; font-weight:700;">
-              <span>⚡ Возможности подписки BobrDobr:</span>
+              <span>✨ Возможности подписки БобрДобр:</span>
             </div>
             <div>• Автоматическое обновление конфигураций серверов и протоколов обфускации</div>
             <div>• Синхронизация списков исключений маршрутизации и обхода блокировок</div>
@@ -2307,7 +2764,7 @@
               <div class="form-grid-2">
                 <div class="form-group">
                   <label class="form-label">Сервер / Хост: *</label>
-                  <input type="text" class="form-input" id="new-awg-server" placeholder="Например: 185.220.101.5 или vpn.domain.com" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-awg-server" placeholder="Например: 185.220.101.5 или vpn.example.com" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
@@ -2336,7 +2793,7 @@
               <div class="form-grid-2">
                 <div class="form-group">
                   <label class="form-label">Сервер / Хост: *</label>
-                  <input type="text" class="form-input" id="new-oc-server" placeholder="Например: vpn.company.com" oninput="onFieldInput('new')">
+                  <input type="text" class="form-input" id="new-oc-server" placeholder="Например: vpn.example.com" oninput="onFieldInput('new')">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Порт: *</label>
@@ -2458,11 +2915,11 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <label class="form-label" style="margin:0;">Содержимое файла конфигурации (.conf):</label>
               <div style="display:flex; gap:6px;">
-                <label class="btn btn-secondary" style="font-size:11px; padding:3px 10px; cursor:pointer;">
+                <label class="btn btn-xs" style="cursor:pointer;">
                   📁 Выбрать .conf файл...
                   <input type="file" id="new-conf-file-input" accept=".conf,.txt" style="display:none;" onchange="handleFileSelect(event, 'new')">
                 </label>
-                <button class="btn btn-secondary" style="font-size:11px; padding:3px 10px;" onclick="copyText(document.getElementById('new-prof-conf').value, this)">📋 Копировать</button>
+                <button class="btn btn-xs" onclick="copyText(document.getElementById('new-prof-conf').value, this)">📋 Копировать</button>
               </div>
             </div>
             <textarea class="form-textarea" id="new-prof-conf" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.8.0.2/32&#10;DNS = 1.1.1.1&#10;...&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = 1.2.3.4:51820" oninput="onConfInput('new')"></textarea>
@@ -2475,11 +2932,11 @@
         </div>
 
       </div>
-      <div class="modal-foot" style="justify-content: space-between;">
+      <div class="modal-foot" id="add-modal-foot" style="justify-content: space-between;">
         <div id="new-conn-validation-status" class="conn-validation-status"></div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div id="add-modal-actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="closeModal('add-profile-modal')">Отмена</button>
-          <button class="btn btn-secondary-sub" id="btn-load-sub-action" style="display:none;">⚡ Загрузить подписку</button>
+          <button class="btn btn-secondary-sub" id="btn-load-sub-action" style="display:none;">📥 Загрузить подписку</button>
           <button class="btn btn-primary" id="btn-save-new-profile">Создать подключение</button>
         </div>
       </div>
@@ -2528,7 +2985,7 @@
             <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label">Сервер / Хост: *</label>
-                <input type="text" class="form-input" id="edit-awg-server" placeholder="vpn.netphoenix.ru" oninput="onFieldInput('edit')">
+                <input type="text" class="form-input" id="edit-awg-server" placeholder="vpn.example.com" oninput="onFieldInput('edit')">
               </div>
               <div class="form-group">
                 <label class="form-label">Порт: *</label>
@@ -2567,7 +3024,7 @@
             <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label">Имя пользователя:</label>
-                <input type="text" class="form-input" id="edit-oc-user" placeholder="egor" oninput="onFieldInput('edit')">
+                <input type="text" class="form-input" id="edit-oc-user" placeholder="user" oninput="onFieldInput('edit')">
               </div>
               <div class="form-group">
                 <label class="form-label">Пароль:</label>
@@ -2579,7 +3036,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Маскировка (?kurwa / User-Agent camo):</label>
-              <input type="text" class="form-input" id="edit-oc-cam" placeholder="kurwa" oninput="onFieldInput('edit')">
+              <input type="text" class="form-input" id="edit-oc-cam" placeholder="secret" oninput="onFieldInput('edit')">
             </div>
           </div>
         </div>
@@ -2679,11 +3136,11 @@
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <label class="form-label" style="margin:0;">Содержимое файла конфигурации (.conf):</label>
             <div style="display:flex; gap:6px;">
-              <label class="btn btn-secondary" style="font-size:11px; padding:3px 10px; cursor:pointer;">
+              <label class="btn btn-xs" style="cursor:pointer;">
                 📁 Выбрать .conf файл...
                 <input type="file" id="edit-conf-file-input" accept=".conf,.txt" style="display:none;" onchange="handleFileSelect(event, 'edit')">
               </label>
-              <button class="btn btn-secondary" style="font-size:11px; padding:3px 10px;" onclick="copyText(document.getElementById('edit-prof-conf').value, this)">📋 Копировать</button>
+              <button class="btn btn-xs" onclick="copyText(document.getElementById('edit-prof-conf').value, this)">📋 Копировать</button>
             </div>
           </div>
           <textarea class="form-textarea" id="edit-prof-conf" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.8.0.2/32&#10;DNS = 1.1.1.1&#10;...&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = 1.2.3.4:51820" oninput="onConfInput('edit')"></textarea>
@@ -2714,7 +3171,7 @@
         <div class="modal-head-left">
           <span style="font-size: 20px;">🚀</span>
           <div>
-            <div class="modal-title-main">Обновление BobrDobr VPN</div>
+            <div class="modal-title-main">Обновление БобрДобр VPN</div>
             <div class="modal-subtitle-main" id="update-modal-subtitle">Доступна новая версия</div>
           </div>
         </div>
@@ -2724,7 +3181,7 @@
         <div class="sub-section-card" style="padding: 14px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="font-weight:700; color:#fff; font-size:13px;" id="update-release-title">Список изменений</div>
-            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.2.2</span>
+            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.3.0</span>
           </div>
           <div id="update-release-desc" style="white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 12px; color: #cbd5e1; max-height: 220px; overflow-y: auto; background: rgba(10, 15, 20, 0.4); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">Описание изменений...</div>
         </div>
@@ -2745,7 +3202,7 @@
           <button class="btn btn-secondary" id="btn-open-github-release" title="Открыть страницу релиза на GitHub в браузере">🌐 Страница релиза</button>
         </div>
         <div>
-          <button class="btn btn-primary" id="btn-start-update" style="background:#06b6d4;">⬇️ Установить обновление</button>
+          <button class="btn btn-primary" id="btn-start-update">⬇️ Установить обновление</button>
         </div>
       </div>
     </div>
@@ -2761,7 +3218,7 @@
           <span style="font-size: 20px;">⚙️</span>
           <div>
             <div class="modal-title-main">Настройки программы</div>
-            <div class="modal-subtitle-main">Конфигурация параметров BobrDobr VPN</div>
+            <div class="modal-subtitle-main">Конфигурация параметров БобрДобр VPN</div>
           </div>
         </div>
         <button class="modal-close-x" onclick="closeModal('settings-modal')">✕</button>
@@ -2775,15 +3232,15 @@
           </div>
           <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="checkbox" id="setting-autostart" style="accent-color:#d97706; width:16px; height:16px;">
+              <input type="checkbox" id="setting-autostart" style="accent-color:#f59e0b; width:16px; height:16px; cursor:pointer;">
               <div>
                 <div style="font-weight:700; color:#fff;">Автозапуск с Windows</div>
-                <div style="font-size:11px; color:var(--text-muted);">Запускать BobrDobr VPN в фоновом режиме при входе в систему</div>
+                <div style="font-size:11px; color:var(--text-muted);">Запускать БобрДобр VPN в фоновом режиме при входе в систему</div>
               </div>
             </label>
 
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="checkbox" id="setting-autoconnect" style="accent-color:#10b981; width:16px; height:16px;">
+              <input type="checkbox" id="setting-autoconnect" style="accent-color:#f59e0b; width:16px; height:16px; cursor:pointer;">
               <div>
                 <div style="font-weight:700; color:#fff;">Автоподключение</div>
                 <div style="font-size:11px; color:var(--text-muted);">Автоматически подключать последний профиль при старте</div>
@@ -2791,7 +3248,7 @@
             </label>
 
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="checkbox" id="setting-notifications" style="accent-color:#06b6d4; width:16px; height:16px;">
+              <input type="checkbox" id="setting-notifications" style="accent-color:#f59e0b; width:16px; height:16px; cursor:pointer;">
               <div>
                 <div style="font-weight:700; color:#fff;">Системные уведомления</div>
                 <div style="font-size:11px; color:var(--text-muted);">Оповещать о подключении, отключении и сбоях гидротурбины</div>
@@ -2799,7 +3256,7 @@
             </label>
 
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="checkbox" id="setting-checkupdates" style="accent-color:#38bdf8; width:16px; height:16px;">
+              <input type="checkbox" id="setting-checkupdates" style="accent-color:#f59e0b; width:16px; height:16px; cursor:pointer;">
               <div>
                 <div style="font-weight:700; color:#fff;">Автопроверка обновлений</div>
                 <div style="font-size:11px; color:var(--text-muted);">Проверять наличие новых версий на GitHub при запуске</div>
@@ -2815,14 +3272,21 @@
           </div>
           <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="radio" name="close-action" id="close-action-tray" value="tray" style="accent-color:#d97706;">
+              <input type="radio" name="close-action" id="close-action-tray" value="tray" style="accent-color:#f59e0b; cursor:pointer;" onchange="updateCloseActionUI()">
               <div>
                 <div style="font-weight:700; color:#fff;">Сворачивать в системный трей (рекомендуется)</div>
                 <div style="font-size:11px; color:var(--text-muted);">VPN-соединение остаётся активным в фоновом режиме</div>
               </div>
             </label>
+            <label id="silent-tray-row" style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-left:26px; margin-top:2px; transition:opacity 0.2s ease, filter 0.2s ease;">
+              <input type="checkbox" id="setting-silent-tray" style="accent-color:#f59e0b; width:15px; height:15px; cursor:pointer;">
+              <div>
+                <div style="font-weight:600; font-size:12px; color:#fff; transition:color 0.2s ease;" id="silent-tray-title">Беззвучно прятаться в трей</div>
+                <div style="font-size:11px; color:var(--text-muted);">Не показывать системное уведомление при сворачивании окна</div>
+              </div>
+            </label>
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-              <input type="radio" name="close-action" id="close-action-exit" value="exit" style="accent-color:#ef4444;">
+              <input type="radio" name="close-action" id="close-action-exit" value="exit" style="accent-color:#f59e0b; cursor:pointer;" onchange="updateCloseActionUI()">
               <div>
                 <div style="font-weight:700; color:#fff;">Полностью завершать работу</div>
                 <div style="font-size:11px; color:var(--text-muted);">Отключать VPN и закрывать процесс приложения</div>
@@ -2838,17 +3302,17 @@
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
             <div>
-              <div style="font-size:11.5px; color:#fff; font-weight:700;">Зашифрованная конфигурация:</div>
-              <div style="font-size:11px; color:var(--text-muted); font-family:monospace;">%APPDATA%\BobrDobr\settings.json (DPAPI + AES-256)</div>
+              <div style="font-size:11.5px; color:#fff; font-weight:700;">Файл конфигурации:</div>
+              <div style="font-size:11px; color:var(--text-muted); font-family:monospace;">%APPDATA%\BobrDobr\settings.json</div>
             </div>
-            <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="callGo('openAppDataDir')">📁 Открыть папку</button>
+            <button class="btn btn-xs" onclick="callGo('openAppDataDir')">📁 Открыть папку</button>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size:11.5px; color:#fff; font-weight:700;">Версия программы:</div>
-              <div style="font-size:11px; color:var(--text-muted);">BobrDobr VPN v1.2.2 (Go Native Engine)</div>
+              <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.0 (Go Native Engine)</div>
             </div>
-            <button class="btn btn-secondary" style="font-size:11px; padding:4px 10px;" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000); callGo('checkUpdate')">🔄 Проверить обновления</button>
+            <button class="btn btn-xs" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000, null, null, 'update'); callGo('checkUpdate')">🔄 Проверить обновления</button>
           </div>
         </div>
 
@@ -2856,6 +3320,33 @@
       <div class="modal-foot" style="justify-content: flex-end;">
         <button class="btn btn-secondary" onclick="closeModal('settings-modal')">Отмена</button>
         <button class="btn btn-primary" id="btn-save-settings">💾 Сохранить настройки</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================
+       MODAL 7: Universal Custom Confirm Dialog
+       ======================================================= -->
+  <div class="modal-backdrop" id="confirm-modal">
+    <div class="modal-box confirm-dialog-box" onclick="event.stopPropagation()">
+      <div class="modal-head confirm-dialog-head">
+        <div class="modal-head-left">
+          <div class="confirm-icon-chip" id="confirm-dialog-icon">⚠️</div>
+          <div>
+            <div class="modal-title-main" id="confirm-dialog-title">Подтверждение действия</div>
+            <div class="modal-subtitle-main" id="confirm-dialog-subtitle">Внимание: это действие необратимо</div>
+          </div>
+        </div>
+        <button class="modal-close-x" id="confirm-dialog-btn-close" onclick="closeConfirmModal(false)">&times;</button>
+      </div>
+      <div class="modal-body confirm-dialog-body">
+        <div id="confirm-dialog-message" class="confirm-dialog-msg-text">
+          Вы действительно хотите выполнить это действие?
+        </div>
+      </div>
+      <div class="modal-foot confirm-dialog-foot">
+        <button class="btn btn-secondary" id="confirm-dialog-btn-cancel" onclick="closeConfirmModal(false)">Отмена</button>
+        <button class="btn btn-danger-action" id="confirm-dialog-btn-confirm">Удалить</button>
       </div>
     </div>
   </div>
@@ -2870,6 +3361,7 @@
       activeProfileId: "",
       profiles: [],
       subscription: null,
+      activeProtocol: "amneziawg",
       activeProto: "amneziawg",
       activeAdapter: "bobr0",
       secondsElapsed: 0,
@@ -2913,34 +3405,142 @@
       if (el) el.classList.remove("open");
     }
 
-    // Modal dismissal handlers: Escape key & backdrop click
+    // =========================================================
+    // Universal Custom Confirm Dialog Logic (Option 1)
+    // =========================================================
+    let confirmModalResolve = null;
+
+    function showConfirmDialog({
+      title = "Подтверждение",
+      subtitle = "Внимание: это действие необратимо",
+      message = "Вы действительно хотите выполнить это действие?",
+      confirmText = "Удалить",
+      icon = "⚠️",
+      isDanger = true
+    } = {}) {
+      return new Promise((resolve) => {
+        confirmModalResolve = resolve;
+        const titleEl = document.getElementById("confirm-dialog-title");
+        const subtitleEl = document.getElementById("confirm-dialog-subtitle");
+        const msgEl = document.getElementById("confirm-dialog-message");
+        const iconEl = document.getElementById("confirm-dialog-icon");
+        const confirmBtn = document.getElementById("confirm-dialog-btn-confirm");
+
+        if (titleEl) titleEl.textContent = title;
+        if (subtitleEl) subtitleEl.textContent = subtitle;
+        if (msgEl) msgEl.innerHTML = message;
+        if (iconEl) iconEl.textContent = icon;
+        if (confirmBtn) {
+          confirmBtn.textContent = confirmText;
+          if (isDanger) {
+            confirmBtn.className = "btn btn-danger-action";
+          } else {
+            confirmBtn.className = "btn btn-primary";
+          }
+        }
+
+        openModal("confirm-modal");
+        setTimeout(() => {
+          if (confirmBtn) confirmBtn.focus();
+        }, 50);
+      });
+    }
+
+    function closeConfirmModal(result = false) {
+      closeModal("confirm-modal");
+      if (confirmModalResolve) {
+        confirmModalResolve(result);
+        confirmModalResolve = null;
+      }
+    }
+
+    document.getElementById("confirm-dialog-btn-confirm").onclick = () => {
+      closeConfirmModal(true);
+    };
+
+    // Modal dismissal handlers: Escape key, Enter key & backdrop click
     window.addEventListener("keydown", (e) => {
+      const confirmModal = document.getElementById("confirm-modal");
+      const isConfirmOpen = confirmModal && confirmModal.classList.contains("open");
+
       if (e.key === "Escape" || e.key === "Esc") {
+        if (isConfirmOpen) {
+          closeConfirmModal(false);
+          e.stopPropagation();
+          return;
+        }
         document.querySelectorAll(".modal-backdrop.open").forEach(modal => {
           closeModal(modal.id);
         });
+      } else if (e.key === "Enter" && isConfirmOpen) {
+        closeConfirmModal(true);
+        e.preventDefault();
+        e.stopPropagation();
       }
     });
 
     document.addEventListener("click", (e) => {
       if (e.target && e.target.classList && e.target.classList.contains("modal-backdrop")) {
-        closeModal(e.target.id);
+        if (e.target.id === "confirm-modal") {
+          closeConfirmModal(false);
+        } else {
+          closeModal(e.target.id);
+        }
       }
     });
 
     // Toolbar Triggers
     document.getElementById("btn-open-subscription").onclick = () => {
+      if (appState.subscription) {
+        const inputEl = document.getElementById("sub-modal-input");
+        if (inputEl) inputEl.value = appState.subscription.url || "";
+        const expiresEl = document.getElementById("sub-param-expires");
+        if (expiresEl) expiresEl.textContent = formatExpiresAt(appState.subscription.expires_at);
+        const syncEl = document.getElementById("sub-param-sync");
+        if (syncEl) syncEl.textContent = formatLastSync(appState.subscription.last_sync);
+        const userEl = document.getElementById("sub-param-user");
+        if (userEl) userEl.textContent = appState.subscription.username || "—";
+        const serverEl = document.getElementById("sub-param-server");
+        if (serverEl) serverEl.textContent = appState.subscription.server || "vpn.example.com";
+      }
       populateSubscriptionModal();
       openModal("sub-modal");
     };
     document.getElementById("btn-open-settings").onclick = () => {
       openModal("settings-modal");
+      updateCloseActionUI();
       callGo("getSettings");
     };
     document.getElementById("btn-add-profile").onclick = () => {
       resetAddModal();
       openModal("add-profile-modal");
     };
+
+    // Close Action & Silent Tray Interactivity
+    function updateCloseActionUI() {
+      const trayRadio = document.getElementById("close-action-tray");
+      const isTray = trayRadio ? trayRadio.checked : true;
+      const silentTrayCheckbox = document.getElementById("setting-silent-tray");
+      const silentTrayRow = document.getElementById("silent-tray-row");
+      const silentTrayTitle = document.getElementById("silent-tray-title");
+
+      if (silentTrayCheckbox && silentTrayRow) {
+        silentTrayCheckbox.disabled = !isTray;
+        if (!isTray) {
+          silentTrayRow.style.opacity = "0.32";
+          silentTrayRow.style.pointerEvents = "none";
+          silentTrayRow.style.cursor = "not-allowed";
+          silentTrayCheckbox.style.cursor = "not-allowed";
+          if (silentTrayTitle) silentTrayTitle.style.color = "var(--text-muted)";
+        } else {
+          silentTrayRow.style.opacity = "1";
+          silentTrayRow.style.pointerEvents = "auto";
+          silentTrayRow.style.cursor = "pointer";
+          silentTrayCheckbox.style.cursor = "pointer";
+          if (silentTrayTitle) silentTrayTitle.style.color = "#fff";
+        }
+      }
+    }
 
     // Copy Sub URL
     document.getElementById("btn-copy-sub-url").onclick = function() {
@@ -2956,14 +3556,18 @@
       const autoConnect = document.getElementById("setting-autoconnect").checked;
       const notifications = document.getElementById("setting-notifications").checked;
       const checkUpdates = document.getElementById("setting-checkupdates").checked;
-      const closeAction = document.getElementById("close-action-exit").checked ? "exit" : "tray";
+      const isExit = document.getElementById("close-action-exit").checked;
+      const closeAction = isExit ? "exit" : "tray";
+      const silentTrayEl = document.getElementById("setting-silent-tray");
+      const silentTray = (!isExit && silentTrayEl) ? silentTrayEl.checked : false;
 
       callGo("saveSettings", {
         auto_start: autoStart,
         auto_connect: autoConnect,
         notifications: notifications,
         check_updates: checkUpdates,
-        close_action: closeAction
+        close_action: closeAction,
+        silent_tray: silentTray
       });
       closeModal("settings-modal");
     };
@@ -2977,10 +3581,27 @@
     };
 
     // Delete sub action
-    document.getElementById("btn-delete-sub-action").onclick = () => {
-      if (confirm("Удалить все профили подписки? Ручные подключения останутся нетронутыми.")) {
+    document.getElementById("btn-delete-sub-action").onclick = async () => {
+      const activeProf = (appState.profiles || []).find(x => x.id === appState.activeProfileId);
+      const isSubActive = activeProf && (activeProf.is_subscription || (activeProf.source && activeProf.source === "subscription") || (activeProf.name && activeProf.name.endsWith("-sub")));
+      const isConnected = isSubActive && (appState.status === "connected" || appState.status === "connecting");
+
+      const confirmed = await showConfirmDialog({
+        title: "Удаление подписки",
+        subtitle: "Отвязка профилей подписки от клиента",
+        message: "Вы действительно хотите удалить все профили подписки?<br><span style='color:var(--text-muted); font-size:11.5px; margin-top:6px; display:inline-block;'>Ручные подключения останутся нетронутыми.</span>" +
+                 (isConnected ? `<br><span style='color:#f87171; font-weight:600; font-size:12px; margin-top:6px; display:inline-block;'>⚠️ Активное подключение «${escapeHtml(activeProf.name)}» будет разорвано.</span>` : ""),
+        confirmText: isConnected ? "🔌 Разорвать и удалить" : "🗑️ Удалить подписку",
+        icon: isConnected ? "🔌" : "🗑️",
+        isDanger: true
+      });
+      if (confirmed) {
+        if (isConnected) {
+          updateDockState("connecting", "Остановка гидротурбины...", "");
+        }
         callGo("deleteSubscription", {});
         closeModal("sub-modal");
+        showToast("Подписка удалена", "info", 2500, null, null, "subscription");
       }
     };
 
@@ -3003,11 +3624,16 @@
       const manualView = document.getElementById("add-views-manual");
       const btnLoadSub = document.getElementById("btn-load-sub-action");
       const btnSaveProf = document.getElementById("btn-save-new-profile");
+      const foot = document.getElementById("add-modal-foot") || document.querySelector("#add-profile-modal .modal-foot");
+      const actions = document.getElementById("add-modal-actions");
 
       if (type === "subscription") {
         if (subView) subView.style.display = "flex";
         if (manualView) manualView.style.display = "none";
-        if (btnLoadSub) btnLoadSub.style.display = "inline-flex";
+        if (btnLoadSub) {
+          btnLoadSub.style.display = "inline-flex";
+          btnLoadSub.innerHTML = "📥 Загрузить подписку";
+        }
         if (btnSaveProf) btnSaveProf.style.display = "none";
       } else {
         if (subView) subView.style.display = "none";
@@ -3016,10 +3642,78 @@
         if (btnSaveProf) btnSaveProf.style.display = "inline-flex";
         setModalProto("new", type);
       }
+      if (foot) {
+        foot.style.justifyContent = "space-between";
+        foot.style.gap = "";
+      }
+      if (actions) {
+        actions.style.justifyContent = "";
+        actions.style.gap = "8px";
+      }
       updateValidationStatus("new");
     }
 
     // Wiring subscription add flow
+    let subCheckDebounceTimer = null;
+    let lastCheckedSubUrl = "";
+
+    function autoCheckSubscriptionUrl(immediate = false) {
+      if (subCheckDebounceTimer) {
+        clearTimeout(subCheckDebounceTimer);
+        subCheckDebounceTimer = null;
+      }
+
+      const checkFn = () => {
+        const input = document.getElementById("new-sub-url");
+        const statusEl = document.getElementById("new-conn-validation-status");
+        if (!input) return;
+
+        const url = (input.value || "").trim();
+        if (!url) {
+          lastCheckedSubUrl = "";
+          if (statusEl && currentAddConnectionType === "subscription") {
+            statusEl.className = "conn-validation-status invalid";
+            statusEl.innerHTML = '<span style="color:#fbbf24;">⚠️ Введите URL подписки</span>';
+          }
+          return;
+        }
+
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          if (url === lastCheckedSubUrl) return;
+          lastCheckedSubUrl = url;
+          if (statusEl) {
+            statusEl.className = "conn-validation-status checking";
+            statusEl.innerHTML = '<span class="validation-spinner">⏳ Проверка подписки...</span>';
+          }
+          callGo("checkSubscriptionStatus", { url: url });
+        } else {
+          lastCheckedSubUrl = "";
+          if (statusEl && currentAddConnectionType === "subscription") {
+            statusEl.className = "conn-validation-status error";
+            statusEl.innerHTML = '<span class="validation-error" style="color:#ef4444;">✕ URL должен начинаться с http:// или https://</span>';
+          }
+        }
+      };
+
+      if (immediate) {
+        checkFn();
+      } else {
+        subCheckDebounceTimer = setTimeout(checkFn, 400);
+      }
+    }
+
+    const newSubUrlInput = document.getElementById("new-sub-url");
+    if (newSubUrlInput) {
+      newSubUrlInput.addEventListener("input", function() {
+        autoCheckSubscriptionUrl(false);
+      });
+      newSubUrlInput.addEventListener("paste", function() {
+        setTimeout(function() {
+          autoCheckSubscriptionUrl(true);
+        }, 50);
+      });
+    }
+
     const btnPasteSubUrl = document.getElementById("btn-paste-sub-url");
     if (btnPasteSubUrl) {
       btnPasteSubUrl.onclick = async function() {
@@ -3043,37 +3737,13 @@
           if (input) {
             input.value = text.trim();
             input.focus();
-            if (typeof updateValidationStatus === "function") {
-              updateValidationStatus("new");
-            }
+            autoCheckSubscriptionUrl(true);
           }
         } else {
           if (input) {
             input.focus();
           }
         }
-      };
-    }
-
-    const btnCheckSubStatus = document.getElementById("btn-check-sub-status");
-    if (btnCheckSubStatus) {
-      btnCheckSubStatus.onclick = function() {
-        const url = (document.getElementById("new-sub-url").value || "").trim();
-        const resultBox = document.getElementById("new-sub-status-result");
-        if (!url) {
-          if (resultBox) {
-            resultBox.className = "sub-status-box error";
-            resultBox.style.display = "flex";
-            resultBox.innerHTML = "<span>⚠️ Пожалуйста, введите URL подписки.</span>";
-          }
-          return;
-        }
-        if (resultBox) {
-          resultBox.className = "sub-status-box checking";
-          resultBox.style.display = "flex";
-          resultBox.innerHTML = "<span>⏳ Проверка доступности сервера подписки...</span>";
-        }
-        callGo("checkSubscriptionStatus", { url: url });
       };
     }
 
@@ -3314,7 +3984,16 @@
       let proto = "amneziawg";
       if (prefix === "new") {
         if (currentAddConnectionType === "subscription") {
-          el.style.display = "none";
+          el.style.display = "inline-flex";
+          const subUrl = (document.getElementById("new-sub-url")?.value || "").trim();
+          if (!subUrl) {
+            el.className = "conn-validation-status invalid";
+            el.innerHTML = '<span style="color:#fbbf24;">⚠️ Введите URL подписки</span>';
+          } else if (subUrl.startsWith("http://") || subUrl.startsWith("https://")) {
+            if (subUrl !== lastCheckedSubUrl) {
+              autoCheckSubscriptionUrl(false);
+            }
+          }
           return;
         }
         proto = currentNewProto || currentAddConnectionType || "amneziawg";
@@ -3442,13 +4121,13 @@
     function resetAddModal() {
       setAddConnectionType("amneziawg");
       switchModalTab('add', 'main');
+      lastCheckedSubUrl = "";
+      if (subCheckDebounceTimer) {
+        clearTimeout(subCheckDebounceTimer);
+        subCheckDebounceTimer = null;
+      }
       const subUrlEl = document.getElementById("new-sub-url");
       if (subUrlEl) subUrlEl.value = "";
-      const subStatusEl = document.getElementById("new-sub-status-result");
-      if (subStatusEl) {
-        subStatusEl.style.display = "none";
-        subStatusEl.innerHTML = "";
-      }
       document.getElementById("new-prof-name").value = "";
       document.getElementById("new-awg-server").value = "";
       document.getElementById("new-awg-port").value = "";
@@ -3597,7 +4276,7 @@
       document.getElementById("edit-prof-id").value = p.id;
       document.getElementById("edit-prof-name").value = p.name || "";
       document.getElementById("edit-prof-proto").value = p.protocol || "amneziawg";
-      document.getElementById("edit-modal-subtitle").textContent = `${p.protocol === 'openconnect' ? 'OpenConnect' : 'AmneziaWG'} • ID: ${p.id}`;
+      document.getElementById("edit-modal-subtitle").textContent = p.protocol === 'openconnect' ? 'Протокол OpenConnect (SSL)' : 'Протокол AmneziaWG (Обфускация)';
 
       const editProtoIconEl = document.getElementById("edit-modal-proto-icon");
       if (editProtoIconEl) {
@@ -3957,6 +4636,59 @@
       return lower.includes("-sub") || lower.includes("_sub") || lower.includes("sub") || lower.includes("подписк");
     }
 
+    function isSubscriptionExpired() {
+      const serverStatus = (appState.subscription && appState.subscription.status) || 
+                           (appState.settings && appState.settings.subscription_status) || "";
+      if (serverStatus === "expired" || serverStatus === "blocked" || serverStatus === "revoked") {
+        return true;
+      }
+
+      if (!appState.subscription) return false;
+      const exp = appState.subscription.expires_at;
+      if (!exp || exp === "Бессрочно") return false;
+
+      let date = null;
+      let hasExactTime = false;
+      if (exp instanceof Date) {
+        date = exp;
+        hasExactTime = true;
+      } else if (typeof exp === "number") {
+        date = new Date(exp > 1e11 ? exp : exp * 1000);
+        hasExactTime = true;
+      } else if (typeof exp === "string") {
+        const trimmed = exp.trim();
+        if (!trimmed || trimmed === "Бессрочно" || trimmed.includes("0001")) return false;
+        const dmyMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{1,2}))?/);
+        if (dmyMatch) {
+          const d = parseInt(dmyMatch[1], 10);
+          const m = parseInt(dmyMatch[2], 10) - 1;
+          const y = parseInt(dmyMatch[3], 10);
+          const h = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+          const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+          if (dmyMatch[4]) hasExactTime = true;
+          date = new Date(y, m, d, h, min);
+        } else {
+          const parsed = new Date(trimmed);
+          if (!isNaN(parsed.getTime())) {
+            date = parsed;
+            if (trimmed.includes("T") || trimmed.includes(":")) hasExactTime = true;
+          }
+        }
+      }
+
+      if (!date || isNaN(date.getTime()) || date.getFullYear() <= 1) return false;
+
+      const now = new Date();
+      if (hasExactTime && date.getTime() < now.getTime()) {
+        return true;
+      }
+
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const expStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const diffDays = Math.round((expStart - todayStart) / (24 * 60 * 60 * 1000));
+      return diffDays < 0;
+    }
+
     function populateSubscriptionModal() {
       const subListContainer = document.getElementById("sub-profiles-list");
       const linkedCountEl = document.getElementById("sub-linked-count");
@@ -3979,6 +4711,12 @@
         return;
       }
 
+      const subStatus = (appState.subscription && appState.subscription.status) || 
+                        (appState.settings && appState.settings.subscription_status) || "";
+      const isSubExpired = isSubscriptionExpired();
+      const isSubBlocked = subStatus === "blocked";
+      const isSubRevoked = subStatus === "revoked";
+
       subProfiles.forEach(p => {
         const isAmz = p.protocol === "amneziawg" || p.protocol === "amnezia";
         const protoLabel = isAmz ? "AmneziaWG" : "OpenConnect";
@@ -3998,6 +4736,15 @@
         const splitBadgeTitle = hasBypass ? "Маршрутизация: Раздельное туннелирование (настроены исключения)" : "Маршрутизация: Весь интернет-трафик направляется через VPN (0.0.0.0/0)";
         const splitClass = hasBypass ? "split-active" : "";
 
+        let subRowBadgeHtml = "";
+        if (isSubBlocked) {
+          subRowBadgeHtml = `<span class="badge-frozen badge-blocked">🚫 Заблокирован</span>`;
+        } else if (isSubRevoked) {
+          subRowBadgeHtml = `<span class="badge-frozen badge-revoked">✕ Отозван</span>`;
+        } else if (isSubExpired) {
+          subRowBadgeHtml = `<span class="badge-frozen">❄️ Заморожен</span>`;
+        }
+
         const subRow = document.createElement("div");
         subRow.className = "sub-profile-row";
         subRow.innerHTML = `
@@ -4007,10 +4754,11 @@
               <span>${protoLabel}</span>
             </span>
             <span style="font-weight:700; color:#fff;" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+            ${subRowBadgeHtml}
             <span class="split-badge ${splitClass}" title="${splitBadgeTitle}">${splitBadgeText}</span>
             <span style="color:var(--text-muted); font-size:11px; margin-left:8px;">🌐 <span class="val-endpoint" title="${escapeHtml(endpointText)}" style="max-width:180px;">${escapeHtml(endpointText)}</span></span>
           </div>
-          <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 9px; color:#fca5a5;" onclick="handleDeleteClick('${p.id}')">🗑️ Удалить</button>
+          <button class="btn btn-xs btn-danger-xs" onclick="handleDeleteClick('${p.id}')">🗑️ Удалить</button>
         `;
         subListContainer.appendChild(subRow);
       });
@@ -4060,6 +4808,12 @@
         const isConnecting = isActive && appState.status === "connecting";
 
         const isSub = isSubscriptionProfile(p);
+        const subStatus = isSub ? ((appState.subscription && appState.subscription.status) || (appState.settings && appState.settings.subscription_status) || "") : "";
+        const isBlocked = isSub && subStatus === "blocked";
+        const isRevoked = isSub && subStatus === "revoked";
+        const isExpired = isSub && (subStatus === "expired" || isSubscriptionExpired());
+        const isFrozen = isBlocked || isRevoked || isExpired;
+
         const isAmz = p.protocol === "amneziawg" || p.protocol === "amnezia";
         const protoLabel = isAmz ? "AmneziaWG" : "OpenConnect";
         const protoClass = isAmz ? "amnezia" : "openconnect";
@@ -4102,6 +4856,15 @@
           statusBadgeClass = "connecting";
           btnText = "Подключение...";
           btnClass = "btn-secondary";
+        } else if (isBlocked) {
+          statusBadgeText = "🚫 Заблокировано";
+          statusBadgeClass = "blocked";
+        } else if (isRevoked) {
+          statusBadgeText = "✕ Отозвано";
+          statusBadgeClass = "error";
+        } else if (isExpired) {
+          statusBadgeText = "❄️ Заморожено";
+          statusBadgeClass = "frozen";
         }
 
         const hasBypass = (p.bypass_domains && p.bypass_domains.length > 0) || p.split_tunnel;
@@ -4109,9 +4872,25 @@
         const splitBadgeTitle = hasBypass ? "Маршрутизация: Раздельное туннелирование (настроены исключения)" : "Маршрутизация: Весь интернет-трафик направляется через VPN (0.0.0.0/0)";
         const splitClass = hasBypass ? "split-active" : "";
 
+        let cardFrozenClass = "";
+        if (isBlocked) {
+          cardFrozenClass = " card-frozen card-blocked";
+        } else if (isFrozen) {
+          cardFrozenClass = " card-frozen";
+        }
+
+        let badgeHtml = "";
+        if (isBlocked) {
+          badgeHtml = `<span class="badge-frozen badge-blocked">🚫 Заблокирован</span>`;
+        } else if (isRevoked) {
+          badgeHtml = `<span class="badge-frozen badge-revoked">✕ Отозван</span>`;
+        } else if (isExpired) {
+          badgeHtml = `<span class="badge-frozen">❄️ Заморожен</span>`;
+        }
+
         // Main Card Element
         const card = document.createElement("div");
-        card.className = `vpn-profile-card ${cardActiveStateClass}`;
+        card.className = `vpn-profile-card ${cardActiveStateClass}${cardFrozenClass}`;
         card.innerHTML = `
           <div class="card-top-row">
             <div class="card-title-group">
@@ -4121,6 +4900,7 @@
               </span>
               ${isSub ? `<span class="sub-badge">${subIconSvg}<span>sub</span></span>` : ""}
               <span class="profile-name-text" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+              ${badgeHtml}
             </div>
             <div class="card-actions-group">
               <span class="card-status-badge ${statusBadgeClass}">${statusBadgeText}</span>
@@ -4138,8 +4918,8 @@
               <span class="split-badge ${splitClass}" title="${splitBadgeTitle}">${splitBadgeText}</span>
             </div>
             <div class="card-mgmt-btns">
-              <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 10px; display:inline-flex; align-items:center; gap:5px;" onclick="event.stopPropagation(); openEditProfileModal('${p.id}')">⚙ <span>Настройки</span></button>
-              <button class="btn btn-secondary" style="font-size:11px; height:26px; padding:0 10px; color:#fca5a5;" onclick="event.stopPropagation(); handleDeleteClick('${p.id}')">🗑 Удалить</button>
+              <button class="btn btn-xs" onclick="event.stopPropagation(); openEditProfileModal('${p.id}')">⚙ <span>Настройки</span></button>
+              <button class="btn btn-xs btn-danger-xs" onclick="event.stopPropagation(); handleDeleteClick('${p.id}')">🗑 Удалить</button>
             </div>
           </div>
         `;
@@ -4166,20 +4946,73 @@
     function handleToggleClick(id) {
       if (appState.status === "connected" && appState.activeProfileId === id) {
         updateDockState("connecting", "Остановка гидротурбины...", "");
+        const curProf = (appState.profiles || []).find(x => x.id === id);
+        const name = curProf ? curProf.name : "VPN";
+        const html = `<span style="color:#94a3b8; font-weight:600;">Отключение:</span> <span style="color:#cbd5e1;">${escapeHtml(name)}...</span>`;
+        showToast(`Отключение ${name}...`, "disconnected", 2200, null, null, "tunnel", html, "⚪");
         callGo("toggleTunnel", { id: id });
-      } else {
-        const p = (appState.profiles || []).find(x => x.id === id);
-        appState.status = "connecting";
-        appState.activeProfileId = id;
-        updateDockState("connecting", `Подключение к ${p ? p.name : 'серверу'}...`, p ? p.name : "");
-        renderProfiles(appState.profiles, appState.activeProfileId);
-        callGo("connectProfile", { id: id });
+        return;
       }
+
+      const p = (appState.profiles || []).find(x => x.id === id);
+      if (p && isSubscriptionProfile(p)) {
+        const subStatus = (appState.subscription && appState.subscription.status) || (appState.settings && appState.settings.subscription_status) || "";
+        if (subStatus === "blocked") {
+          showToast("Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.", "error", 7000, "Открыть личный кабинет", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          return;
+        }
+        if (subStatus === "revoked") {
+          showToast("Токен подписки недействителен или был удален. Скопируйте новую ссылку в веб-панели.", "error", 7000, null, null, "subscription");
+          return;
+        }
+        if (subStatus === "expired" || isSubscriptionExpired()) {
+          showToast("Срок действия подписки истек. Продлите доступ в личном кабинете веб-панели.", "error", 7000, "Открыть личный кабинет", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          return;
+        }
+      }
+
+      appState.status = "connecting";
+      appState.activeProfileId = id;
+      if (p && p.protocol) {
+        appState.activeProtocol = p.protocol;
+        appState.activeProto = p.protocol;
+      }
+      updateDockState("connecting", `Подключение к ${p ? p.name : 'серверу'}...`, p ? p.name : "", appState.activeAdapter, appState.activeProtocol);
+      renderProfiles(appState.profiles, appState.activeProfileId);
+
+      const connName = p ? p.name : "серверу";
+      const connHtml = `<span style="color:#38bdf8; font-weight:600;">Подключение:</span> <span style="color:#f8fafc;">${escapeHtml(connName)}...</span>`;
+      showToast(`Подключение к ${connName}...`, "info", 3200, null, null, "tunnel", connHtml, "🔄");
+
+      callGo("connectProfile", { id: id });
     }
 
     // Delete Profile Handler
-    function handleDeleteClick(id) {
-      if (confirm("Вы уверены, что хотите удалить это подключение?")) {
+    async function handleDeleteClick(id) {
+      const prof = (appState.profiles || []).find(x => x.id === id);
+      const profName = prof ? prof.name : "это подключение";
+      const isSub = prof && (prof.is_subscription || (prof.source && prof.source === "subscription"));
+      const isCurrentActive = (appState.activeProfileId === id) && (appState.status === "connected" || appState.status === "connecting");
+
+      const confirmed = await showConfirmDialog({
+        title: "Удаление подключения",
+        subtitle: isSub ? "Удаление туннеля подписки" : "Удаление профиля конфигурации",
+        message: `Вы уверены, что хотите удалить подключение <b>«${escapeHtml(profName)}»</b>?` +
+                 (isCurrentActive ? `<br><span style='color:#f87171; font-weight:600; font-size:12px; margin-top:6px; display:inline-block;'>⚠️ Внимание: это подключение сейчас активно! VPN будет немедленно разорван.</span>`
+                                  : `<br><span style='color:var(--text-muted); font-size:11.5px; margin-top:6px; display:inline-block;'>Конфигурация будет безвозвратно удалена из хранилища.</span>`),
+        confirmText: isCurrentActive ? "🔌 Разорвать и удалить" : "🗑️ Удалить",
+        icon: isCurrentActive ? "🔌" : "🗑️",
+        isDanger: true
+      });
+      if (confirmed) {
+        if (isCurrentActive) {
+          updateDockState("connecting", "Остановка гидротурбины...", "");
+          showToast(`Разрыв соединения и удаление «${profName}»...`, "info", 2500, null, null, "tunnel");
+        }
         callGo("deleteProfile", { id: id });
       }
     }
@@ -4187,16 +5020,57 @@
     // =========================================================
     // Update Bottom Dock States
     // =========================================================
-    function updateDockState(status, message, activeProfileName, adapterName) {
+    function updateDockState(status, message, activeProfileName, adapterName, protoName) {
       const headerPill = document.getElementById("header-status-pill");
       const headerText = document.getElementById("header-status-text");
 
       const dockPill = document.getElementById("dock-status-pill");
       const dockPillText = document.getElementById("dock-status-pill-text");
       const tunnelChip = document.getElementById("dock-tunnel-chip");
+      const tunnelIcon = document.getElementById("dock-tunnel-icon");
       const tunnelName = document.getElementById("dock-tunnel-name");
       const tunnelAdapter = document.getElementById("dock-tunnel-adapter");
       const dockSubtext = document.getElementById("dock-subtext");
+
+      // Flexible argument handling: supports (status, message, activeProfileName, adapterName, protoName)
+      // or (status, message, adapterName, protoName)
+      let profName = activeProfileName;
+      let adapt = adapterName;
+      let proto = protoName;
+
+      if (arguments.length === 4 && (adapterName === "amneziawg" || adapterName === "openconnect")) {
+        proto = adapterName;
+        adapt = activeProfileName;
+        const p = (appState.profiles || []).find(x => x.id === appState.activeProfileId);
+        profName = p ? p.name : "";
+      }
+
+      if (adapt) {
+        appState.activeAdapter = adapt;
+      }
+      if (proto) {
+        appState.activeProtocol = proto;
+        appState.activeProto = proto;
+      } else if (!appState.activeProtocol) {
+        const p = (appState.profiles || []).find(x => x.id === appState.activeProfileId);
+        if (p && p.protocol) {
+          appState.activeProtocol = p.protocol;
+          appState.activeProto = p.protocol;
+        }
+      }
+
+      const activeProto = (appState.activeProtocol || appState.activeProto || "").toLowerCase();
+
+      // Update active protocol icon in bottom dock
+      if (tunnelIcon) {
+        if ((status === "connected" || status === "connecting") && activeProto === "amneziawg") {
+          tunnelIcon.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none"><circle cx="12" cy="12" r="9" fill="rgba(245,158,11,0.2)" stroke="#f59e0b" stroke-width="1.8"/><path d="m4.5 5.5 5 14.5 2.7-8.5 2.8 8.5 5-14.5" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        } else if ((status === "connected" || status === "connecting") && activeProto === "openconnect") {
+          tunnelIcon.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M22 12a10.06 10.06 0 0 0-20 0Z" fill="rgba(6,182,212,0.2)" stroke="#06b6d4" stroke-width="1.8"/><path d="M12 12v6a2 2 0 0 0 4 0" stroke="#06b6d4" stroke-width="1.8" stroke-linecap="round"/><path d="M12 2v2" stroke="#06b6d4" stroke-width="1.8"/></svg>`;
+        } else {
+          tunnelIcon.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#64748b" stroke-width="1.8"/></svg>`;
+        }
+      }
 
       if (adapterName) {
         appState.activeAdapter = adapterName;
@@ -4290,56 +5164,111 @@
     }
 
     function formatExpiresAt(expires) {
-      if (!expires) return "Бессрочно";
-      if (typeof expires !== "string" && !(expires instanceof Date) && typeof expires !== "number") {
-        return "Бессрочно";
-      }
+      const expiresEl = document.getElementById("sub-param-expires");
+      const pillEl = document.getElementById("sub-modal-status-pill") || document.querySelector("#sub-modal .sub-status-pill");
 
-      let date = null;
-      if (expires instanceof Date) {
-        date = expires;
-      } else if (typeof expires === "number") {
-        date = new Date(expires > 1e11 ? expires : expires * 1000);
-      } else {
-        const trimmed = expires.trim();
-        if (!trimmed || trimmed === "Бессрочно" || trimmed.includes("0001")) {
-          return "Бессрочно";
+      function updatePillAndColor(status, colorClass, hexColor, customPillText) {
+        if (expiresEl) {
+          expiresEl.className = "sub-param-val " + colorClass;
+          expiresEl.style.color = hexColor;
         }
-        const dmyMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-        if (dmyMatch) {
-          const d = parseInt(dmyMatch[1], 10);
-          const m = parseInt(dmyMatch[2], 10) - 1;
-          const y = parseInt(dmyMatch[3], 10);
-          date = new Date(y, m, d);
-        } else {
-          const parsed = new Date(trimmed);
-          if (!isNaN(parsed.getTime())) {
-            date = parsed;
+        if (pillEl) {
+          pillEl.className = "sub-status-pill " + status;
+          if (customPillText) {
+            pillEl.textContent = customPillText;
+          } else if (status === "expired") {
+            pillEl.textContent = "● Истекла";
+          } else if (status === "expiring") {
+            pillEl.textContent = "● Истекает";
+          } else {
+            pillEl.textContent = "● Активна";
           }
         }
       }
 
-      if (!date || isNaN(date.getTime()) || date.getFullYear() <= 1) {
-        return "Бессрочно";
+      // Absolute priority of server status over cached dates
+      const serverStatus = (appState.subscription && appState.subscription.status) || 
+                           (appState.settings && appState.settings.subscription_status) || "";
+
+      if (serverStatus === "blocked") {
+        updatePillAndColor("expired", "red", "#ef4444", "● Заблокирован");
+        return "Заблокирован администратором";
       }
 
-      const dayStr = String(date.getDate()).padStart(2, "0");
-      const monthStr = String(date.getMonth() + 1).padStart(2, "0");
-      const yearStr = String(date.getFullYear());
-      const dateFormatted = `${dayStr}.${monthStr}.${yearStr}`;
+      if (serverStatus === "revoked") {
+        updatePillAndColor("expired", "red", "#ef4444", "● Отозван");
+        return "Токен отозван";
+      }
+
+      let date = null;
+      let hasExactTime = false;
+      if (expires instanceof Date) {
+        date = expires;
+        hasExactTime = true;
+      } else if (typeof expires === "number") {
+        date = new Date(expires > 1e11 ? expires : expires * 1000);
+        hasExactTime = true;
+      } else if (typeof expires === "string") {
+        const trimmed = expires.trim();
+        if (trimmed && trimmed !== "Бессрочно" && !trimmed.includes("0001")) {
+          const dmyMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{1,2}))?/);
+          if (dmyMatch) {
+            const d = parseInt(dmyMatch[1], 10);
+            const m = parseInt(dmyMatch[2], 10) - 1;
+            const y = parseInt(dmyMatch[3], 10);
+            const h = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+            const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+            if (dmyMatch[4]) hasExactTime = true;
+            date = new Date(y, m, d, h, min);
+          } else {
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+              date = parsed;
+              if (trimmed.includes("T") || trimmed.includes(":")) hasExactTime = true;
+            }
+          }
+        }
+      }
+
+      let dateFormatted = "";
+      if (date && !isNaN(date.getTime()) && date.getFullYear() > 1) {
+        const dayStr = String(date.getDate()).padStart(2, "0");
+        const monthStr = String(date.getMonth() + 1).padStart(2, "0");
+        const yearStr = String(date.getFullYear());
+        dateFormatted = `${dayStr}.${monthStr}.${yearStr}`;
+      }
+
+      if (serverStatus === "expired") {
+        updatePillAndColor("expired", "red", "#ef4444", "● Истекла");
+        if (dateFormatted) {
+          return `${dateFormatted} (истекла по данным сервера)`;
+        }
+        return "Истекла";
+      }
+
+      if (!expires || !dateFormatted) {
+        updatePillAndColor("active", "emerald", "#10b981");
+        return "Бессрочно";
+      }
 
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const expStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
       const diffDays = Math.round((expStart - todayStart) / (24 * 60 * 60 * 1000));
 
-      if (diffDays > 0) {
-        return `${dateFormatted} (осталось ${diffDays} ${getDaysDeclension(diffDays)})`;
-      } else if (diffDays === 0) {
-        return `${dateFormatted} (истекает сегодня)`;
-      } else {
-        const passedDays = Math.abs(diffDays);
+      if (diffDays < 0 || (hasExactTime && date.getTime() < now.getTime() && diffDays <= 0)) {
+        updatePillAndColor("expired", "red", "#ef4444");
+        const passedDays = Math.max(1, Math.abs(diffDays));
         return `${dateFormatted} (истекла ${passedDays} ${getDaysDeclension(passedDays)} назад)`;
+      } else if (diffDays <= 3) {
+        updatePillAndColor("expiring", "amber", "#fbbf24");
+        if (diffDays === 0) {
+          return `${dateFormatted} (истекает сегодня)`;
+        }
+        return `${dateFormatted} (осталось ${diffDays} ${getDaysDeclension(diffDays)})`;
+      } else {
+        updatePillAndColor("active", "emerald", "#10b981");
+        return `${dateFormatted} (осталось ${diffDays} ${getDaysDeclension(diffDays)})`;
       }
     }
 
@@ -4410,49 +5339,284 @@
       return trimmed;
     }
 
-    // Modern Floating Toast Notification System
-    function showToast(text, type = "info", duration = 3800, actionText = null, actionCallback = null) {
+    // =========================================================
+    // Modern Floating Toast Notification System with Queue & Stagger
+    // =========================================================
+    const appLaunchTimestamp = Date.now();
+    const STARTUP_TOAST_DELAY_MS = 1400; // 1.4s grace period on app launch before showing toasts
+    const MAX_VISIBLE_TOASTS = 3;
+    const TOAST_STAGGER_MS = 420; // Stagger appearance between multiple queued toasts
+
+    const toastQueue = [];
+    let isProcessingToastQueue = false;
+
+    function showToast(text, type = "info", duration = null, actionText = null, actionCallback = null, category = "general", customHtml = null, customIcon = null) {
+      if (!text && !customHtml) return;
+      if (!duration) {
+        duration = (actionText && typeof actionCallback === "function") ? 4600 : 3600;
+      }
+
+      const item = {
+        id: "toast-" + Date.now() + "-" + Math.random().toString(36).substr(2, 5),
+        text: text || "",
+        customHtml,
+        customIcon,
+        type,
+        duration,
+        actionText,
+        actionCallback,
+        category: category || "general"
+      };
+
+      const container = document.getElementById("toast-container");
+
+      if (item.category !== "general") {
+        // 1. Purge any pending queued toasts in the same category (keep queue clean)
+        for (let i = toastQueue.length - 1; i >= 0; i--) {
+          if (toastQueue[i].category === item.category) {
+            toastQueue.splice(i, 1);
+          }
+        }
+
+        // 2. Check if a toast of this category is currently displayed and active
+        if (container) {
+          const existingToast = container.querySelector(`.toast-message[data-category="${item.category}"]:not(.toast-hiding)`);
+          if (existingToast) {
+            updateExistingToast(existingToast, item);
+            return;
+          }
+
+          // If there is an existing toast of this category currently hiding, remove it immediately
+          const hidingToast = container.querySelector(`.toast-message[data-category="${item.category}"].toast-hiding`);
+          if (hidingToast) {
+            hidingToast.remove();
+          }
+        }
+      } else {
+        // For general toasts, prevent exact duplicate toasts from queuing
+        const isDuplicate = toastQueue.some(q => q.text === text && q.type === type);
+        if (isDuplicate) return;
+      }
+
+      toastQueue.push(item);
+      scheduleToastQueueProcessing();
+    }
+
+    function updateExistingToast(toastEl, item) {
+      if (!toastEl) return;
+
+      // Update category attribute
+      toastEl.dataset.category = item.category;
+
+      // Update type class (removing previous status classes)
+      toastEl.classList.remove("success", "error", "warning", "info", "disconnected");
+      toastEl.classList.add(item.type);
+      toastEl.classList.remove("toast-updated");
+      void toastEl.offsetWidth; // force reflow for pulse animation
+      toastEl.classList.add("toast-updated");
+
+      // Update icon
+      let icon = item.customIcon;
+      if (!icon) {
+        icon = "ℹ️";
+        if (item.type === "success") icon = "✅";
+        if (item.type === "error") icon = "⚠️";
+        if (item.type === "warning") icon = "🔔";
+        if (item.type === "disconnected") icon = "⚪";
+      }
+
+      const iconSpan = toastEl.querySelector(".toast-icon");
+      if (iconSpan) {
+        iconSpan.textContent = icon;
+      }
+
+      // Update text / html
+      const textSpan = toastEl.querySelector(".toast-text");
+      if (textSpan) {
+        if (item.customHtml) {
+          textSpan.innerHTML = item.customHtml;
+        } else {
+          textSpan.textContent = item.text;
+        }
+      }
+
+      // Update action button
+      let actionBtn = toastEl.querySelector(".toast-action-btn");
+      const closeBtn = toastEl.querySelector(".toast-close-btn");
+
+      if (item.actionText && typeof item.actionCallback === "function") {
+        if (!actionBtn) {
+          actionBtn = document.createElement("button");
+          actionBtn.className = "toast-action-btn";
+          actionBtn.style.flexShrink = "0";
+          if (closeBtn) {
+            toastEl.insertBefore(actionBtn, closeBtn);
+          } else {
+            toastEl.appendChild(actionBtn);
+          }
+        }
+        actionBtn.textContent = item.actionText;
+        actionBtn.onclick = (e) => {
+          e.stopPropagation();
+          dismissToast(toastEl);
+          item.actionCallback();
+        };
+      } else if (actionBtn) {
+        actionBtn.remove();
+      }
+
+      // Reset auto-dismiss timer
+      if (toastEl._timerData) {
+        toastEl._timerData.start(item.duration);
+      }
+    }
+
+    function scheduleToastQueueProcessing() {
+      if (isProcessingToastQueue) return;
+
+      const elapsed = Date.now() - appLaunchTimestamp;
+      if (elapsed < STARTUP_TOAST_DELAY_MS) {
+        const remaining = STARTUP_TOAST_DELAY_MS - elapsed;
+        setTimeout(processToastQueue, remaining);
+        return;
+      }
+
+      processToastQueue();
+    }
+
+    function processToastQueue() {
+      if (toastQueue.length === 0) {
+        isProcessingToastQueue = false;
+        return;
+      }
+
       const container = document.getElementById("toast-container");
       if (!container) return;
 
-      // Single toast at a time: immediately dismiss existing toasts to prevent stacking
-      const existingToasts = container.querySelectorAll(".toast-message");
-      existingToasts.forEach(t => t.remove());
+      const activeToasts = container.querySelectorAll(".toast-message:not(.toast-hiding)");
+      if (activeToasts.length >= MAX_VISIBLE_TOASTS) {
+        isProcessingToastQueue = false;
+        return;
+      }
 
+      isProcessingToastQueue = true;
+      const item = toastQueue.shift();
+      renderToastElement(item, container);
+
+      if (toastQueue.length > 0) {
+        setTimeout(processToastQueue, TOAST_STAGGER_MS);
+      } else {
+        isProcessingToastQueue = false;
+      }
+    }
+
+    function dismissToast(toastEl) {
+      if (!toastEl || toastEl.classList.contains("toast-hiding")) return;
+      if (toastEl._timerData && toastEl._timerData.timerId) {
+        clearTimeout(toastEl._timerData.timerId);
+        toastEl._timerData.timerId = null;
+      }
+      toastEl.classList.add("toast-hiding");
+      setTimeout(() => {
+        toastEl.remove();
+        scheduleToastQueueProcessing();
+      }, 280);
+    }
+
+    function renderToastElement(item, container) {
       const toast = document.createElement("div");
-      toast.className = `toast-message ${type}`;
-      let icon = "ℹ️";
-      if (type === "success") icon = "✅";
-      if (type === "error") icon = "⚠️";
-      if (type === "warning") icon = "🔔";
+      toast.className = `toast-message ${item.type}`;
+      toast.id = item.id;
+      toast.dataset.category = item.category || "general";
+
+      let icon = item.customIcon;
+      if (!icon) {
+        icon = "ℹ️";
+        if (item.type === "success") icon = "✅";
+        if (item.type === "error") icon = "⚠️";
+        if (item.type === "warning") icon = "🔔";
+        if (item.type === "disconnected") icon = "⚪";
+      }
 
       const iconSpan = document.createElement("span");
+      iconSpan.className = "toast-icon";
       iconSpan.style.cssText = "font-size:16px; flex-shrink:0;";
       iconSpan.textContent = icon;
       toast.appendChild(iconSpan);
 
       const textSpan = document.createElement("span");
-      textSpan.style.cssText = "flex:1;";
-      textSpan.textContent = text;
+      textSpan.className = "toast-text";
+      if (item.customHtml) {
+        textSpan.innerHTML = item.customHtml;
+      } else {
+        textSpan.textContent = item.text;
+      }
       toast.appendChild(textSpan);
 
-      if (actionText && typeof actionCallback === "function") {
+      if (item.actionText && typeof item.actionCallback === "function") {
         const actionBtn = document.createElement("button");
         actionBtn.className = "toast-action-btn";
-        actionBtn.textContent = actionText;
+        actionBtn.style.flexShrink = "0";
+        actionBtn.textContent = item.actionText;
         actionBtn.onclick = (e) => {
           e.stopPropagation();
-          actionCallback();
+          dismissToast(toast);
+          item.actionCallback();
         };
         toast.appendChild(actionBtn);
       }
 
+      // Close button (✕)
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "toast-close-btn";
+      closeBtn.title = "Закрыть уведомление";
+      closeBtn.setAttribute("aria-label", "Закрыть");
+      closeBtn.innerHTML = "✕";
+      closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        dismissToast(toast);
+      };
+      toast.appendChild(closeBtn);
+
       container.appendChild(toast);
-      setTimeout(() => {
-        toast.style.opacity = "0";
-        toast.style.transform = "translateY(-10px) scale(0.96)";
-        setTimeout(() => toast.remove(), 280);
-      }, duration);
+
+      // Auto-dismiss timer object with hover pause support
+      toast._timerData = {
+        timerId: null,
+        remainingTime: item.duration,
+        timerStart: Date.now(),
+        start: function(ms) {
+          if (this.timerId) clearTimeout(this.timerId);
+          this.timerStart = Date.now();
+          this.remainingTime = ms;
+          this.timerId = setTimeout(() => {
+            dismissToast(toast);
+          }, ms);
+        },
+        pause: function() {
+          if (this.timerId) {
+            clearTimeout(this.timerId);
+            this.timerId = null;
+            this.remainingTime -= (Date.now() - this.timerStart);
+            if (this.remainingTime < 1400) this.remainingTime = 1400;
+          }
+        },
+        resume: function() {
+          if (!this.timerId && !toast.classList.contains("toast-hiding")) {
+            this.start(this.remainingTime);
+          }
+        }
+      };
+
+      toast.addEventListener("mouseenter", () => {
+        if (toast._timerData) toast._timerData.pause();
+      });
+
+      toast.addEventListener("mouseleave", () => {
+        if (toast._timerData) toast._timerData.resume();
+      });
+
+      toast._timerData.start(item.duration);
     }
 
     // =========================================================
@@ -4460,7 +5624,7 @@
     // =========================================================
     window.handleGoEvent = function(event, data) {
       console.log("[GoEvent]", event, data);
-      if (!data) return;
+      data = data || {};
 
       switch(event) {
         case "profilesUpdated":
@@ -4468,47 +5632,138 @@
           if (data.activeProfileId !== undefined) {
             appState.activeProfileId = data.activeProfileId;
           }
+          const curProf = appState.profiles.find(p => p.id === appState.activeProfileId);
+          if (curProf && curProf.protocol) {
+            appState.activeProtocol = curProf.protocol;
+            appState.activeProto = curProf.protocol;
+          }
           renderProfiles(appState.profiles, appState.activeProfileId);
+          if (appState.status === "connected" || appState.status === "connecting") {
+            if (!curProf) {
+              updateDockState("disconnected", "Отключено", "", "", "");
+            } else {
+              updateDockState(appState.status, "", curProf.name, appState.activeAdapter, appState.activeProtocol);
+            }
+          }
           break;
 
-        case "stateChange":
+        case "stateChange": {
+          const prevStatus = appState.status;
           appState.status = data.status || "disconnected";
           if (data.adapter) {
             appState.activeAdapter = data.adapter;
           }
           const activeProf = appState.profiles.find(p => p.id === appState.activeProfileId);
-          updateDockState(appState.status, data.message, activeProf ? activeProf.name : "", data.adapter);
+          if (data.protocol) {
+            appState.activeProtocol = data.protocol;
+            appState.activeProto = data.protocol;
+          } else if (activeProf && activeProf.protocol) {
+            appState.activeProtocol = activeProf.protocol;
+            appState.activeProto = activeProf.protocol;
+          }
+          updateDockState(appState.status, data.message, activeProf ? activeProf.name : "", data.adapter, appState.activeProtocol);
           renderProfiles(appState.profiles, appState.activeProfileId);
+
+          const profName = activeProf ? activeProf.name : (data.profile || "VPN");
+
+          // Surface sleek GUI toast notifications for connection state transitions
+          if (appState.status === "connected") {
+            if (prevStatus !== "connected") {
+              const html = `<span style="color:#10b981; font-weight:600;">Подключено:</span> <span style="font-weight:600; color:#f8fafc;">${escapeHtml(profName)}</span>`;
+              showToast(`Подключено: ${profName}`, "success", 2600, null, null, "tunnel", html, "✅");
+            }
+          } else if (appState.status === "disconnected") {
+            // Only show disconnect toast if transitioning from an active or connecting session
+            if (prevStatus === "connected" || prevStatus === "connecting") {
+              const isSubEnforcement = data.message && (data.message.includes("заблокирован") || data.message.includes("истёк") || data.message.includes("токен"));
+              if (!isSubEnforcement) {
+                const msg = data.message || `Отключено: ${profName}`;
+                const html = `<span style="color:#94a3b8; font-weight:600;">Отключено:</span> <span style="color:#cbd5e1;">${escapeHtml(profName)}</span>`;
+                showToast(msg, "disconnected", 2400, null, null, "tunnel", html, "⚪");
+              }
+            }
+          } else if (appState.status === "error") {
+            const errMsg = data.message || "Не удалось установить соединение";
+            const html = `<span style="color:#ef4444; font-weight:600;">Ошибка:</span> <span style="color:#f8fafc;">${escapeHtml(errMsg)}</span>`;
+            showToast(`Ошибка: ${errMsg}`, "error", 3500, null, null, "tunnel", html, "⚠️");
+          }
           break;
+        }
 
         case "subscriptionUpdated":
           if (data.subscription) {
+            appState.subscription = data.subscription;
+            if (data.subscription.status && appState.settings) {
+              appState.settings.subscription_status = data.subscription.status;
+            }
             document.getElementById("sub-modal-input").value = data.subscription.url || "";
             document.getElementById("sub-param-expires").textContent = formatExpiresAt(data.subscription.expires_at);
             document.getElementById("sub-param-sync").textContent = formatLastSync(data.subscription.last_sync);
-            document.getElementById("sub-param-user").textContent = data.subscription.username || "Egor";
-            document.getElementById("sub-param-server").textContent = data.subscription.server || "bobr.netphoenix.ru";
+            document.getElementById("sub-param-user").textContent = data.subscription.username || "—";
+            document.getElementById("sub-param-server").textContent = data.subscription.server || "vpn.example.com";
             populateSubscriptionModal();
+            renderProfiles(appState.profiles, appState.activeProfileId);
           }
           break;
 
-        case "subscriptionStatusResult":
-          const resultBox = document.getElementById("new-sub-status-result");
-          if (resultBox) {
+        case "subscriptionBlocked": {
+          if (!appState.subscription) appState.subscription = {};
+          appState.subscription.status = "blocked";
+          if (appState.settings) appState.settings.subscription_status = "blocked";
+          renderProfiles(appState.profiles, appState.activeProfileId);
+          populateSubscriptionModal();
+          const msg = (data && data.message) ? data.message : "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.";
+          showToast(msg, "error", 8000, "Кабинет", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          break;
+        }
+
+        case "subscriptionRevoked": {
+          if (!appState.subscription) appState.subscription = {};
+          appState.subscription.status = "revoked";
+          if (appState.settings) appState.settings.subscription_status = "revoked";
+          renderProfiles(appState.profiles, appState.activeProfileId);
+          populateSubscriptionModal();
+          const msg = (data && data.message) ? data.message : "Токен подписки недействителен или был удален. Скопируйте новую ссылку в веб-панели.";
+          showToast(msg, "error", 8000, "Кабинет", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          break;
+        }
+
+        case "subscriptionStatusResult": {
+          const statusEl = document.getElementById("new-conn-validation-status");
+          if (statusEl) {
+            statusEl.style.display = "inline-flex";
             if (data && data.success) {
-              resultBox.className = "sub-status-box success";
-              resultBox.style.display = "flex";
-              const count = data.profilesCount || 0;
-              const user = data.username ? ` • Пользователь: ${escapeHtml(data.username)}` : "";
-              resultBox.innerHTML = `<span>✓ Сервер доступен! Найдено подключений: <strong>${count}</strong>${user}</span>`;
+              statusEl.className = "conn-validation-status valid";
+              const count = data.profilesCount !== undefined ? data.profilesCount : 0;
+              const exp = data.expires_at || "Бессрочно";
+              statusEl.innerHTML = `<span class="validation-success" style="color:#10b981;">✓ Подписка действительна: ${count} профилей (${escapeHtml(exp)})</span>`;
             } else {
-              resultBox.className = "sub-status-box error";
-              resultBox.style.display = "flex";
-              const err = (data && data.error) ? escapeHtml(data.error) : "Не удалось связаться с сервером подписки";
-              resultBox.innerHTML = `<span>✕ Ошибка проверки: ${err}</span>`;
+              const st = data ? data.status : "";
+              if (st === "blocked") {
+                statusEl.className = "conn-validation-status error";
+                statusEl.innerHTML = `<span class="validation-error" style="color:#ef4444;">🚫 Аккаунт заблокирован администратором</span>`;
+              } else if (st === "expired") {
+                statusEl.className = "conn-validation-status error";
+                statusEl.innerHTML = `<span class="validation-error" style="color:#ef4444;">⚠️ Срок действия подписки истёк</span>`;
+              } else if (st === "revoked") {
+                statusEl.className = "conn-validation-status error";
+                statusEl.innerHTML = `<span class="validation-error" style="color:#ef4444;">✕ Токен недействителен или отозван (401)</span>`;
+              } else if (st === "ratelimit") {
+                statusEl.className = "conn-validation-status warning";
+                statusEl.innerHTML = `<span class="validation-warning" style="color:#fbbf24;">⏳ Слишком много запросов (429). Подождите</span>`;
+              } else {
+                statusEl.className = "conn-validation-status error";
+                const err = (data && data.error) ? escapeHtml(data.error) : "Не удалось связаться с сервером подписки";
+                statusEl.innerHTML = `<span class="validation-error" style="color:#ef4444;">✕ Ошибка: ${err}</span>`;
+              }
             }
           }
           break;
+        }
 
         case "trafficStats":
         case "statsUpdated":
@@ -4518,6 +5773,38 @@
         case "log":
           addLogLine(data.text, data.tag || "БОБР");
           break;
+
+        case "toastError":
+          if (data && (data.message || data.text)) {
+            showToast(data.message || data.text, "error", 5000, null, null, "tunnel");
+          }
+          break;
+
+        case "subscriptionExpiredNotification": {
+          if (!appState.subscription) appState.subscription = {};
+          appState.subscription.status = "expired";
+          if (appState.settings) appState.settings.subscription_status = "expired";
+          renderProfiles(appState.profiles, appState.activeProfileId);
+          populateSubscriptionModal();
+          const msg = (data && data.message) ? data.message : `Срок действия вашей подписки истёк${data && data.expires_at ? ` (${data.expires_at})` : ""}. Подключения заморожены.`;
+          showToast(msg, "warning", 7000, "Продлить", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          break;
+        }
+
+        case "subscriptionExpiringNotification": {
+          const days = (data && data.days_left !== undefined) ? data.days_left : "";
+          let daysText = "";
+          if (days !== "") {
+            daysText = days === 0 ? " сегодня" : ` (осталось ${days} ${getDaysDeclension(days)})`;
+          }
+          const msg = (data && data.message) ? data.message : `Срок действия подписки истекает${daysText}. Пожалуйста, продлите доступ.`;
+          showToast(msg, "warning", 6000, "Продлить", () => {
+            callGo("openCabinet");
+          }, "subscription");
+          break;
+        }
 
         case "instanceConflict":
           if (data) {
@@ -4551,7 +5838,7 @@
 
             showToast(`🚀 Доступна новая версия v${data.version}!`, "success", 6000, "Подробнее", () => {
               openModal("update-modal");
-            });
+            }, "update");
 
             const isSnoozed = sessionStorage.getItem("snooze_update_" + data.version) === "true";
             if (!isSnoozed) {
@@ -4591,33 +5878,34 @@
             const labelEl = document.getElementById("update-progress-label");
             if (labelEl) labelEl.textContent = "Ошибка загрузки";
             const errMsg = data && data.error ? data.error : "Не удалось скачать обновление";
-            showToast(`Ошибка загрузки обновления: ${errMsg}`, "error", 5000);
+            showToast(`Ошибка загрузки обновления: ${errMsg}`, "error", 5000, null, null, "update");
           }
           break;
 
         case "updateCheckResult":
           if (data && !data.has_update) {
             if (data.error) {
-              showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000);
+              showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000, null, null, "update");
             } else {
-              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.2.2";
-              showToast(`У вас установлена актуальная версия BobrDobr VPN (${ver})`, "success", 4000);
+              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.3.0";
+              showToast(`У вас установлена актуальная версия БобрДобр VPN (${ver})`, "success", 4000, null, null, "update");
             }
           }
           break;
 
         case "ready": {
           const appVerEl = document.getElementById("app-ver-badge");
-          if (appVerEl) appVerEl.textContent = "v1.2.2";
+          if (appVerEl) appVerEl.textContent = "v1.3.0";
           break;
         }
 
         case "settingsLoaded":
           {
             const appVerEl = document.getElementById("app-ver-badge");
-            if (appVerEl) appVerEl.textContent = "v1.2.2";
+            if (appVerEl) appVerEl.textContent = "v1.3.0";
           }
           if (data) {
+            appState.settings = data;
             const elAutostart = document.getElementById("setting-autostart");
             if (elAutostart) elAutostart.checked = !!data.auto_start;
             const elAutoconnect = document.getElementById("setting-autoconnect");
@@ -4626,12 +5914,36 @@
             if (elNotif) elNotif.checked = data.notifications !== false;
             const elUpdates = document.getElementById("setting-checkupdates");
             if (elUpdates) elUpdates.checked = data.check_updates !== false;
+            const elSilentTray = document.getElementById("setting-silent-tray");
+            if (elSilentTray) elSilentTray.checked = !!data.silent_tray;
             if (data.close_action === "exit") {
               const elExit = document.getElementById("close-action-exit");
               if (elExit) elExit.checked = true;
             } else {
               const elTray = document.getElementById("close-action-tray");
               if (elTray) elTray.checked = true;
+            }
+            updateCloseActionUI();
+            if (data.subscription_status) {
+              if (!appState.subscription) appState.subscription = {};
+              appState.subscription.status = data.subscription_status;
+            }
+            if (data.subscription_url || data.subscription_expires_at) {
+              if (!appState.subscription) {
+                appState.subscription = {
+                  url: data.subscription_url || "",
+                  expires_at: data.subscription_expires_at || "Бессрочно",
+                  username: data.subscription_username || "—",
+                  server: data.subscription_server || "vpn.example.com",
+                  last_sync: data.last_sync_time || "",
+                  status: data.subscription_status || "active"
+                };
+              } else {
+                if (data.subscription_expires_at) appState.subscription.expires_at = data.subscription_expires_at;
+                if (data.subscription_url) appState.subscription.url = data.subscription_url;
+                if (data.subscription_status) appState.subscription.status = data.subscription_status;
+              }
+              renderProfiles(appState.profiles, appState.activeProfileId);
             }
           }
           break;
@@ -4646,13 +5958,14 @@
           break;
       }
     };
+    window.onBridgeEvent = window.handleGoEvent;
 
     let latestUpdateVersion = "";
     let latestUpdateUrl = "";
     let latestReleaseHtmlUrl = "https://github.com/Phoenix1302/BobrDobr/releases";
 
     document.getElementById("app-ver-badge").onclick = () => {
-      showToast("Проверка обновлений на сервере...", "info", 2000);
+      showToast("Проверка обновлений на сервере...", "info", 2000, null, null, "update");
       callGo("checkUpdate");
     };
 
@@ -4713,7 +6026,7 @@
       if (typeof window.nativeBridgeCall === "function") {
         bridgeReady = true;
         const appVerEl = document.getElementById("app-ver-badge");
-        if (appVerEl) appVerEl.textContent = "v1.2.2";
+        if (appVerEl) appVerEl.textContent = "v1.3.0";
         callGo("ready");
       } else {
         setTimeout(initBridge, 60);
@@ -4724,6 +6037,7 @@
       setupDragAndDrop('new-prof-conf', 'new');
       setupDragAndDrop('edit-prof-conf', 'edit');
       applyLogFilter("all");
+      updateCloseActionUI();
       initBridge();
     }
 

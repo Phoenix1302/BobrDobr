@@ -17,7 +17,7 @@
 #endif
 
 #ifndef AppVersion
-  #define AppVersion "1.2.2"
+  #define AppVersion "1.3.0"
 #endif
 
 #ifndef AppPublisher
@@ -50,6 +50,10 @@
 
 #ifndef AssetsDir
   #define AssetsDir SourceDir + "\assets"
+#endif
+
+#ifndef CertsDir
+  #define CertsDir SourceDir + "\client-go\certs"
 #endif
 
 #ifndef OutputDir
@@ -154,13 +158,25 @@ Source: "{#AppExeSource}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: i
 Source: "..\manifest\BobrDobr.exe.manifest"; DestDir: "{app}"; DestName: "{#AppExeName}.manifest"; Flags: ignoreversion
 
 ; Core VPN engines and networking drivers (stored single-instance in {app}\bin)
-Source: "{#BinDir}\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BinDir}\amneziawg-go.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "{#BinDir}\openconnect-worker.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
+Source: "{#BinDir}\wintun.dll"; DestDir: "{app}\bin"; Flags: ignoreversion
 
 ; UI Assets and Icons
 Source: "{#AssetsDir}\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AssetsDir}\bobr_logo.ico"; DestDir: "{app}"; Flags: ignoreversion
 
+; Public security certificates for Windows trust
+Source: "{#CertsDir}\BobrDobr-RootCA.cer"; DestDir: "{app}\certs"; Flags: ignoreversion
+Source: "{#CertsDir}\BobrDobr-CodeSign.cer"; DestDir: "{app}\certs"; Flags: ignoreversion
+
 [InstallDelete]
+; Clean up legacy C-libraries, openconnect.exe and vpnc scripts from older BobrDobr installations
+Type: files; Name: "{app}\bin\openconnect.exe"
+Type: files; Name: "{app}\bin\vpnc-script-win.js"
+Type: files; Name: "{app}\bin\vpnc-script.js"
+Type: files; Name: "{app}\bin\lib*.dll"
+Type: files; Name: "{app}\bin\zlib1.dll"
 Type: filesandordirs; Name: "{app}\bin\windows"
 Type: files; Name: "{app}\wintun.dll"
 ; Proactively purge legacy user-level installation folder to eliminate duplicate copies
@@ -180,6 +196,7 @@ Type: filesandordirs; Name: "{userprograms}\{#AppEnglishName}"
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\bin"
 Type: filesandordirs; Name: "{app}\assets"
+Type: filesandordirs; Name: "{app}\certs"
 Type: files; Name: "{userdesktop}\{#AppName}.lnk"
 Type: files; Name: "{userdesktop}\{#AppEnglishName}.lnk"
 Type: files; Name: "{userdesktop}\BobrDobr.lnk"
@@ -192,8 +209,8 @@ Type: filesandordirs; Name: "{userprograms}\{#AppName}"
 Type: filesandordirs; Name: "{userprograms}\{#AppEnglishName}"
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\bobr_logo.ico"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\bobr_logo.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\bobr_logo.ico"; WorkingDir: "{app}"; AppUserModelID: "BobrDobr.VPN.Client"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\bobr_logo.ico"; WorkingDir: "{app}"; AppUserModelID: "BobrDobr.VPN.Client"; Tasks: desktopicon
 
 [Registry]
 ; Auto-start: HKLM for all-users / HKCU for current-user
@@ -201,24 +218,58 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: s
 ; Application registration for Windows App Paths
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExeName}"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExeName}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#AppExeName}"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+; AppUserModelID registration for Windows Action Center and notification titles
+Root: HKA; Subkey: "Software\Classes\AppUserModelId\BobrDobr.VPN.Client"; ValueType: string; ValueName: "DisplayName"; ValueData: "{#AppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\AppUserModelId\BobrDobr.VPN.Client"; ValueType: string; ValueName: "IconUri"; ValueData: "{app}\assets\bobr_logo.ico"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\AppUserModelId\BobrDobr.VPN.Client"; ValueType: string; ValueName: "IconBackgroundColor"; ValueData: "0"; Flags: uninsdeletekey
+; Protocol registration for interactive notifications (bobrdobr://...)
+Root: HKA; Subkey: "Software\Classes\bobrdobr"; ValueType: string; ValueName: ""; ValueData: "URL:BobrDobr Protocol"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\bobrdobr"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\bobrdobr\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" ""%1"""; Flags: uninsdeletekey
 
 [Run]
+; Register BobrDobr Root CA into Trusted Root Certification Authorities and Code Signing into Trusted Publishers
+Filename: "{sys}\certutil.exe"; Parameters: "-addstore -f Root ""{app}\certs\BobrDobr-RootCA.cer"""; Flags: runhidden
+Filename: "{sys}\certutil.exe"; Parameters: "-addstore -f TrustedPublisher ""{app}\certs\BobrDobr-CodeSign.cer"""; Flags: runhidden
 ; Whitelist VPN core daemons in Windows Firewall to prevent any firewall prompt popups
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""BobrDobr AmneziaWG"" dir=in action=allow program=""{app}\bin\amneziawg-go.exe"" enable=yes profile=any"; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""BobrDobr OpenConnect"" dir=in action=allow program=""{app}\bin\openconnect.exe"" enable=yes profile=any"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""BobrDobr OpenConnect"" dir=in action=allow program=""{app}\bin\openconnect-worker.exe"" enable=yes profile=any"; Flags: runhidden
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram}"; Flags: shellexec nowait postinstall skipifsilent
 
 [UninstallRun]
+Filename: "{sys}\certutil.exe"; Parameters: "-delstore Root 8BE32AF4F6E0E7B1431C24522611ECBBB8BA5189"; Flags: runhidden; RunOnceId: "DelCertRoot"
+Filename: "{sys}\certutil.exe"; Parameters: "-delstore TrustedPublisher 1F9FDC89219B37C82FFE0567AFB27BA5B001B4F5"; Flags: runhidden; RunOnceId: "DelCertPublisher"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""BobrDobr AmneziaWG"""; Flags: runhidden; RunOnceId: "DelFwRuleAmneziaWG"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""BobrDobr-AmneziaWG"""; Flags: runhidden; RunOnceId: "DelFwRuleAmneziaWGHyphen"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""BobrDobr OpenConnect"""; Flags: runhidden; RunOnceId: "DelFwRuleOpenConnect"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""BobrDobr-OpenConnect"""; Flags: runhidden; RunOnceId: "DelFwRuleOpenConnectHyphen"
 
 [Code]
+const
+  HWND_TOPMOST = -1;
+  SWP_NOSIZE = $0001;
+  SWP_NOMOVE = $0002;
+  SWP_SHOWWINDOW = $0040;
+
+function SetWindowPos(hWnd: HWND; hWndInsertAfter: HWND; X, Y, cx, cy: Integer; uFlags: UINT): BOOL;
+  external 'SetWindowPos@user32.dll stdcall';
+function SetForegroundWindow(hWnd: HWND): BOOL;
+  external 'SetForegroundWindow@user32.dll stdcall';
+function BringWindowToTop(hWnd: HWND): BOOL;
+  external 'BringWindowToTop@user32.dll stdcall';
+
 var
   IsUpgradeMode: Boolean;
   PreviousVersion: String;
   PreviousInstallDir: String;
+
+// Helper: Brings the installer wizard window to foreground and sets topmost
+procedure MakeWizardTopMost();
+begin
+  BringWindowToTop(WizardForm.Handle);
+  SetForegroundWindow(WizardForm.Handle);
+  SetWindowPos(WizardForm.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_SHOWWINDOW);
+end;
 
 // Helper: Exhaustively purges all BobrDobr keys and values from a specific registry hive
 procedure PurgeAllBobrDobrRegistryKeysFromHive(RootKey: Integer);
@@ -241,10 +292,19 @@ begin
   RegDeleteKeyIncludingSubkeys(RootKey, 'Software\Microsoft\Windows\CurrentVersion\App Paths\BobrDobr.exe');
   RegDeleteKeyIncludingSubkeys(RootKey, 'Software\Microsoft\Windows\CurrentVersion\App Paths\BobrDobr-VPN.exe');
 
-  // 4. Auto-start Run values
+  // 4. Auto-start Run values & StartupApproved
   RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Run', 'BobrDobrVPN');
   RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Run', 'BobrDobr');
   RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Run', 'BobrDobr-VPN');
+  RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', 'BobrDobrVPN');
+  RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', 'BobrDobr');
+  RegDeleteValue(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', 'BobrDobr-VPN');
+
+  // 5. AppUserModelId
+  RegDeleteKeyIncludingSubkeys(RootKey, 'Software\Classes\AppUserModelId\BobrDobr.VPN.Client');
+
+  // 6. bobrdobr:// protocol
+  RegDeleteKeyIncludingSubkeys(RootKey, 'Software\Classes\bobrdobr');
 end;
 
 // Helper: Checks a specific registry root key for an existing installation and verifies files exist on disk
@@ -319,7 +379,7 @@ procedure TerminateRunningInstances();
 var
   ResultCode: Integer;
 begin
-  Exec('taskkill.exe', '/F /IM BobrDobr.exe /IM BobrDobr-VPN.exe /IM BobrDobr-VPN-v1.1.0.exe /IM BobrDobr-VPN-v1.1.1.exe /IM amneziawg-go.exe /IM openconnect.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /IM BobrDobr.exe /IM BobrDobr-VPN.exe /IM BobrDobr-VPN-v1.1.0.exe /IM BobrDobr-VPN-v1.1.1.exe /IM amneziawg-go.exe /IM openconnect.exe /IM openconnect-worker.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(400);
 end;
 
@@ -435,6 +495,9 @@ procedure InitializeWizard();
 var
   UpgradeMsg: String;
 begin
+  // Ensure installer window appears on top of all windows
+  MakeWizardTopMost();
+
   if IsUpgradeMode then
   begin
     if PreviousVersion = '' then
@@ -454,6 +517,12 @@ begin
       end;
     end;
   end;
+end;
+
+// Re-assert topmost and foreground on wizard page changes to prevent UAC/Explorer from burying the window
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  MakeWizardTopMost();
 end;
 
 // Setup installation step notifications

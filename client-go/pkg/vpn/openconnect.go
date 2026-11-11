@@ -38,13 +38,45 @@ type OpenConnectSupervisor struct {
 	listeners  []EventListener
 	mu         sync.Mutex
 	cmd        *exec.Cmd
+	stdinPipe  io.WriteCloser
 	state      State
 	exitCh     chan struct{}
 	cmdFactory func(ctx context.Context, name string, args ...string) *exec.Cmd
 }
 
+// isWorkerBinary checks if the binary is the pure-Go openconnect-worker.
+func isWorkerBinary(binPath string) bool {
+	base := strings.ToLower(filepath.Base(binPath))
+	return strings.Contains(base, "worker") || (!strings.HasPrefix(base, "openconnect.") && base != "openconnect")
+}
+
+// resolveDefaultBinary searches for openconnect-worker.exe first, falling back to openconnect.exe.
+func resolveDefaultBinary() string {
+	candidates := []string{
+		"openconnect-worker.exe",
+		"openconnect-worker",
+		"bin/openconnect-worker.exe",
+		"bin/windows/openconnect-worker.exe",
+		"openconnect.exe",
+		"openconnect",
+	}
+	for _, c := range candidates {
+		if path, err := exec.LookPath(c); err == nil {
+			return path
+		}
+		if _, err := os.Stat(c); err == nil {
+			abs, _ := filepath.Abs(c)
+			return abs
+		}
+	}
+	return "openconnect-worker.exe"
+}
+
 // NewOpenConnectSupervisor creates a new OpenConnect supervisor.
 func NewOpenConnectSupervisor(binaryPath string, job *JobObject) *OpenConnectSupervisor {
+	if binaryPath == "" {
+		binaryPath = resolveDefaultBinary()
+	}
 	return &OpenConnectSupervisor{
 		binaryPath: binaryPath,
 		jobObject:  job,
@@ -111,7 +143,8 @@ func (s *OpenConnectSupervisor) emit(state State, message, channel string, detai
 	}
 }
 
-// Start launches openconnect with credentials strictly passed via stdin pipe.
+// Start launches openconnect-worker (or openconnect fallback) with credentials passed via stdin pipe.
+// The stdin pipe is kept open during tunnel lifetime to enable graceful CSTP BYE termination upon closure.
 func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig) error {
 	s.mu.Lock()
 	if s.cmd != nil && s.cmd.Process != nil {
@@ -132,7 +165,7 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 		bin = s.binaryPath
 	}
 	if bin == "" {
-		bin = "openconnect"
+		bin = resolveDefaultBinary()
 	}
 
 	// Build target URL
@@ -157,48 +190,76 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 		}
 	}
 
-	// Prepare arguments: NEVER put password in args!
-	args := []string{
-		"--non-inter",
-		"--passwd-on-stdin",
-		"-v",
-	}
+	// Prepare arguments according to worker vs legacy binary
+	isWorker := isWorkerBinary(bin)
+	var args []string
+	if isWorker {
+		args = []string{
+			"--stdin-control",
+			"--passwd-on-stdin",
+		}
 
-	proto := strings.ToLower(strings.TrimSpace(cfg.Protocol))
-	if proto != "" && proto != "anyconnect" {
-		args = append(args, "--protocol", proto)
-	}
+		if cfg.Username != "" {
+			args = append(args, "--user", cfg.Username)
+		}
 
-	if cfg.Username != "" {
-		args = append(args, "--user", cfg.Username)
-	}
+		if cfg.Group != "" {
+			args = append(args, "--authgroup", cfg.Group)
+		}
 
-	if cfg.Group != "" {
-		args = append(args, "--authgroup", cfg.Group)
-	}
+		if cfg.InterfaceName != "" {
+			args = append(args, "--interface", cfg.InterfaceName)
+		}
 
-	if cfg.InterfaceName != "" {
-		args = append(args, "--interface", cfg.InterfaceName)
-	}
+		if len(cfg.ExtraArgs) > 0 {
+			args = append(args, cfg.ExtraArgs...)
+		}
 
-	if cfg.Script != "" {
-		scriptArg := strings.Trim(strings.TrimSpace(cfg.Script), `"`)
-		args = append(args, "--script", scriptArg)
-	}
+		args = append(args, targetURL)
+	} else {
+		// Legacy openconnect.exe fallback
+		args = []string{
+			"--non-inter",
+			"--passwd-on-stdin",
+			"-v",
+		}
 
-	if len(cfg.ExtraArgs) > 0 {
-		args = append(args, cfg.ExtraArgs...)
-	}
+		proto := strings.ToLower(strings.TrimSpace(cfg.Protocol))
+		if proto != "" && proto != "anyconnect" {
+			args = append(args, "--protocol", proto)
+		}
 
-	args = append(args, targetURL)
+		if cfg.Username != "" {
+			args = append(args, "--user", cfg.Username)
+		}
+
+		if cfg.Group != "" {
+			args = append(args, "--authgroup", cfg.Group)
+		}
+
+		if cfg.InterfaceName != "" {
+			args = append(args, "--interface", cfg.InterfaceName)
+		}
+
+		if cfg.Script != "" {
+			scriptArg := strings.Trim(strings.TrimSpace(cfg.Script), `"`)
+			args = append(args, "--script", scriptArg)
+		}
+
+		if len(cfg.ExtraArgs) > 0 {
+			args = append(args, cfg.ExtraArgs...)
+		}
+
+		args = append(args, targetURL)
+	}
 
 	cmd := s.cmdFactory(context.Background(), bin, args...)
-	configureSysProcAttr(cmd)
+	configureOpenConnectProcAttr(cmd)
 
 	binDir := filepath.Dir(bin)
 	cmd.Dir = binDir
 
-	// Ensure binary's directory is in PATH so Windows loads libopenconnect-5.dll, libgnutls-30.dll, etc.
+	// Ensure binary's directory is in PATH for dependencies
 	env := os.Environ()
 	pathUpdated := false
 	for i, e := range env {
@@ -243,6 +304,7 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 	}
 
 	s.cmd = cmd
+	s.stdinPipe = stdinPipe
 	exitCh := make(chan struct{})
 	s.exitCh = exitCh
 	pid := cmd.Process.Pid
@@ -253,18 +315,18 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 		_ = s.jobObject.AssignProcessPID(pid)
 	}
 
-	// Write password to stdin pipe and close it immediately
-	go func() {
-		defer stdinPipe.Close()
-		if cfg.Password != "" {
-			_, _ = io.WriteString(stdinPipe, cfg.Password+"\n")
-		}
-	}()
+	// Write password to stdin pipe and KEEP PIPE OPEN!
+	// Closing s.stdinPipe in Stop() signals graceful termination (CSTP BYE packet).
+	if cfg.Password != "" {
+		_, _ = io.WriteString(stdinPipe, cfg.Password+"\n")
+	} else {
+		_, _ = io.WriteString(stdinPipe, "\n")
+	}
 
 	s.emit(StateConnecting, fmt.Sprintf("OpenConnect started (PID: %d, server: %s)", pid, targetURL), "sys", map[string]interface{}{
 		"pid":      pid,
 		"server":   targetURL,
-		"protocol": proto,
+		"protocol": cfg.Protocol,
 	})
 
 	var wg sync.WaitGroup
@@ -285,6 +347,10 @@ func (s *OpenConnectSupervisor) Start(ctx context.Context, cfg OpenConnectConfig
 		_ = cmd.Wait()
 
 		s.mu.Lock()
+		if s.stdinPipe != nil {
+			_ = s.stdinPipe.Close()
+			s.stdinPipe = nil
+		}
 		s.cmd = nil
 		s.mu.Unlock()
 
@@ -316,6 +382,7 @@ func (s *OpenConnectSupervisor) ParseLine(line, channel string) {
 		"tunnel interface",
 		"session established",
 		"dtls-negotiation: done",
+		"cstp tunnel established",
 	}
 
 	for _, kw := range connectedKeywords {
@@ -379,28 +446,32 @@ func (s *OpenConnectSupervisor) ParseLine(line, channel string) {
 	s.emit(currentState, line, channel, nil)
 }
 
-// Stop gracefully terminates OpenConnect by sending CTRL_C / CTRL_BREAK
-// to allow sending the AnyConnect BYE packet before exit.
+// Stop gracefully terminates OpenConnect by closing the standard input pipe.
+// The pure-Go worker intercepts EOF on stdin, sends AnyConnect CSTP BYE packet
+// to the server, resets network routes, closes Wintun and exits in ~100-300ms.
 func (s *OpenConnectSupervisor) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	cmd := s.cmd
+	stdinPipe := s.stdinPipe
 	exitCh := s.exitCh
 	if cmd == nil || cmd.Process == nil {
+		if stdinPipe != nil {
+			_ = stdinPipe.Close()
+			s.stdinPipe = nil
+		}
 		s.mu.Unlock()
 		return nil
 	}
 	pid := cmd.Process.Pid
+
+	// 1. Close stdin pipe to signal graceful shutdown (worker sends AnyConnect CSTP BYE packet)
+	if stdinPipe != nil {
+		_ = stdinPipe.Close()
+		s.stdinPipe = nil
+	}
 	s.mu.Unlock()
 
 	s.emit(StateDisconnecting, fmt.Sprintf("Stopping OpenConnect session (PID: %d)...", pid), "sys", map[string]interface{}{"pid": pid})
-
-	// 1. Send graceful signal so OpenConnect can send AnyConnect BYE packet
-	sigSent := SendGracefulSignal(pid)
-	if sigSent {
-		s.emit(StateDisconnecting, fmt.Sprintf("Sent graceful termination signal (SIGINT/CTRL-C) to OpenConnect (PID: %d)", pid), "sys", map[string]interface{}{"pid": pid, "graceful": true})
-	} else {
-		s.emit(StateDisconnecting, fmt.Sprintf("Failed to send graceful signal to OpenConnect (PID: %d), waiting for exit or force kill", pid), "sys", map[string]interface{}{"pid": pid, "graceful": false})
-	}
 
 	// 2. Wait up to 3.5s for graceful exit to allow sending BYE packet
 	if exitCh != nil {
@@ -432,6 +503,10 @@ func (s *OpenConnectSupervisor) Stop(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
+	if s.stdinPipe != nil {
+		_ = s.stdinPipe.Close()
+		s.stdinPipe = nil
+	}
 	s.cmd = nil
 	s.mu.Unlock()
 

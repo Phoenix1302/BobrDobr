@@ -52,7 +52,7 @@ Configured for seamless modern Windows software deployment:
   - Checks during setup launch and during uninstallation, prompting the user to close any running instances.
 - **Packaged Components**:
   - Main binary: `BobrDobr.exe`
-  - Windows engines: `amneziawg-go.exe`, `openconnect.exe`, `wintun.dll`, all supporting runtime DLLs, and `vpnc-script-win.js`.
+  - Windows engines: `amneziawg-go.exe`, `openconnect-worker.exe`, `wintun.dll`.
   - Assets: `assets/bobr_logo.ico`, branding graphics, SVGs.
 - **Shortcuts & Registry**:
   - Desktop shortcut (optional task) and Start Menu shortcut.
@@ -69,5 +69,5 @@ Configured for seamless modern Windows software deployment:
 Use the automated script from `client-go/scripts/`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Build-Installer.ps1 -Version "1.2.0"
+powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Build-Installer.ps1 -Version "1.3.0"
 ```

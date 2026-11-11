@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	runRegistryKey = `Software\Microsoft\Windows\CurrentVersion\Run`
-	runValueName   = "BobrDobrVPN"
+	runRegistryKey             = `Software\Microsoft\Windows\CurrentVersion\Run`
+	startupApprovedRegistryKey = `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`
+	runValueName               = "BobrDobrVPN"
 )
 
 // SetAutoStart sets or removes the Windows user logon run entry for BobrDobr VPN.
@@ -27,12 +28,29 @@ func SetAutoStart(enabled bool) error {
 		if err != nil {
 			return err
 		}
+
 		val := fmt.Sprintf(`"%s" --minimized`, exe)
-		return k.SetStringValue(runValueName, val)
+		if err := k.SetStringValue(runValueName, val); err != nil {
+			return err
+		}
+
+		// Update StartupApproved in Windows Explorer to guarantee Task Manager shows it as "Enabled"
+		if approvedKey, err := registry.OpenKey(registry.CURRENT_USER, startupApprovedRegistryKey, registry.SET_VALUE); err == nil {
+			defer approvedKey.Close()
+			// 0x02 = Enabled in Windows 10/11 Task Manager
+			enabledBytes := []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+			_ = approvedKey.SetBinaryValue(runValueName, enabledBytes)
+		}
+		return nil
 	}
 
 	// Delete value if exists
 	_ = k.DeleteValue(runValueName)
+
+	if approvedKey, err := registry.OpenKey(registry.CURRENT_USER, startupApprovedRegistryKey, registry.SET_VALUE); err == nil {
+		defer approvedKey.Close()
+		_ = approvedKey.DeleteValue(runValueName)
+	}
 	return nil
 }
 

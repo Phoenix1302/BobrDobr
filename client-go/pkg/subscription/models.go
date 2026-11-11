@@ -1,6 +1,10 @@
 package subscription
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Phoenix1302/BobrDobr/pkg/config"
@@ -18,6 +22,121 @@ const (
 	StatusFrozen   SubscriptionStatus = "frozen"
 	StatusUnknown  SubscriptionStatus = "unknown"
 )
+
+// ServerErrorCode represents error codes returned or synthesized from server responses.
+type ServerErrorCode string
+
+const (
+	CodeAccountBlocked ServerErrorCode = "account_blocked"
+	CodeSubExpired     ServerErrorCode = "subscription_expired"
+	CodeTokenRevoked   ServerErrorCode = "token_revoked"
+	CodeRateLimited    ServerErrorCode = "rate_limited"
+)
+
+// ServerError represents a structured error returned when subscription requests fail.
+type ServerError struct {
+	StatusCode int             `json:"status_code"`
+	Code       ServerErrorCode `json:"code"`
+	Message    string          `json:"message"`
+	ServerHost string          `json:"server_host"`
+	CabinetURL string          `json:"cabinet_url"`
+	RawBody    string          `json:"raw_body"`
+}
+
+func (e *ServerError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Message != "" {
+		return e.Message
+	}
+	return fmt.Sprintf("server error: status=%d code=%s", e.StatusCode, e.Code)
+}
+
+func (e *ServerError) Is(target error) bool {
+	if target == nil {
+		return false
+	}
+	switch e.Code {
+	case CodeTokenRevoked:
+		return target == ErrUnauthorized
+	case CodeAccountBlocked, CodeSubExpired:
+		return target == ErrForbidden
+	case CodeRateLimited:
+		return target == ErrRateLimited
+	}
+	return false
+}
+
+// IsBlocked reports whether the error indicates an account blocked by administrator.
+func IsBlocked(err error) bool {
+	var srvErr *ServerError
+	if errors.As(err, &srvErr) {
+		return srvErr.Code == CodeAccountBlocked
+	}
+	return false
+}
+
+// IsExpired reports whether the error indicates an expired subscription.
+func IsExpired(err error) bool {
+	var srvErr *ServerError
+	if errors.As(err, &srvErr) {
+		return srvErr.Code == CodeSubExpired
+	}
+	return false
+}
+
+// IsRevoked reports whether the error indicates an invalid or revoked token.
+func IsRevoked(err error) bool {
+	if errors.Is(err, ErrUnauthorized) {
+		return true
+	}
+	var srvErr *ServerError
+	if errors.As(err, &srvErr) {
+		return srvErr.Code == CodeTokenRevoked
+	}
+	return false
+}
+
+// IsRateLimited reports whether the error indicates a rate limiting error.
+func IsRateLimited(err error) bool {
+	if errors.Is(err, ErrRateLimited) {
+		return true
+	}
+	var srvErr *ServerError
+	if errors.As(err, &srvErr) {
+		return srvErr.Code == CodeRateLimited
+	}
+	return false
+}
+
+// parseFrozenValue extracts the integer value of is_frozen (0, 1, or 2).
+func parseFrozenValue(val any) int {
+	if val == nil {
+		return 0
+	}
+	switch v := val.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case string:
+		s := strings.TrimSpace(v)
+		if n, err := strconv.Atoi(s); err == nil {
+			return n
+		}
+		if strings.EqualFold(s, "true") {
+			return 1
+		}
+	case bool:
+		if v {
+			return 1
+		}
+	}
+	return 0
+}
 
 // SubscriptionInfo holds the parsed and processed details of a subscription bundle.
 type SubscriptionInfo struct {
@@ -44,6 +163,7 @@ type SubscriptionInfo struct {
 type rawSubscriptionResponse struct {
 	Status       string          `json:"status"`
 	Error        string          `json:"error"`
+	IsFrozen     any             `json:"is_frozen"`
 	CabinetURL   string          `json:"cabinet_url"`
 	DashboardURL string          `json:"dashboard_url"`
 	User         *rawUser        `json:"user"`
@@ -58,6 +178,7 @@ type rawUser struct {
 	Username  string `json:"username"`
 	Role      string `json:"role"`
 	ExpiresAt any    `json:"expires_at"`
+	IsFrozen  any    `json:"is_frozen"`
 }
 
 type rawServer struct {

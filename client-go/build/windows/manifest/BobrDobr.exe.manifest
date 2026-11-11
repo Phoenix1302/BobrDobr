@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
-    version="1.2.2.0"
+    version="1.3.0.0"
     processorArchitecture="*"
     name="BobrDobr.VPN.Client"
     type="win32"
   />
   <description>BobrDobr VPN - High-Performance Multi-Protocol VPN Client</description>
   
-  <!-- Execution Level: requireAdministrator guarantees necessary permissions for Wintun and routing tables -->
+  <!-- Execution Level: asInvoker allows protocol actions (bobrdobr://) from toasts without UAC popups; main process self-elevates -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

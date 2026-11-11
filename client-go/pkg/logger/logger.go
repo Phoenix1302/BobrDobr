@@ -22,6 +22,9 @@ const DefaultMaxBackups int = 7
 // DefaultMaxAgeDays is the maximum age in days before a rotated log archive is purged.
 const DefaultMaxAgeDays int = 14
 
+// UTF8BOM is the 3-byte UTF-8 Byte Order Mark (0xEF, 0xBB, 0xBF)
+var UTF8BOM = []byte{0xEF, 0xBB, 0xBF}
+
 // SafeLogWriter safely logs to a persistent file and optionally to stdout.
 // Under the Windows GUI Subsystem (-H windowsgui), os.Stdout is an invalid handle (ERROR_INVALID_HANDLE).
 // SafeLogWriter guarantees that writes to the persistent log file ALWAYS occur and sync,
@@ -75,6 +78,15 @@ func NewSafeLogWriter(logPath string, maxSize int64) (*SafeLogWriter, error) {
 			return nil, fmt.Errorf("failed to open log file %q: %w", logPath, err)
 		}
 		w.file = f
+		if fi, err := f.Stat(); err == nil {
+			w.currentSize = fi.Size()
+			if fi.Size() == 0 {
+				if _, err := f.Write(UTF8BOM); err == nil {
+					w.currentSize = int64(len(UTF8BOM))
+					_ = f.Sync()
+				}
+			}
+		}
 	}
 
 	return w, nil
@@ -166,6 +178,10 @@ func (w *SafeLogWriter) rotateLocked() {
 			if truncErr == nil {
 				w.file = f
 				w.currentSize = 0
+				if _, err := f.Write(UTF8BOM); err == nil {
+					w.currentSize = int64(len(UTF8BOM))
+					_ = f.Sync()
+				}
 			}
 			return
 		}
@@ -176,6 +192,10 @@ func (w *SafeLogWriter) rotateLocked() {
 	if openErr == nil {
 		w.file = f
 		w.currentSize = 0
+		if _, err := f.Write(UTF8BOM); err == nil {
+			w.currentSize = int64(len(UTF8BOM))
+			_ = f.Sync()
+		}
 	}
 
 	// Run retention pruning on rotated files
@@ -417,6 +437,7 @@ func MigrateLegacyLogs(appDir string, logDir string) error {
 func FormatEntry(p []byte, t time.Time) []byte {
 	ts := t.Format("2006-01-02 15:04:05")
 	raw := strings.TrimRight(string(p), "\r\n")
+	raw = strings.ToValidUTF8(raw, "")
 	if raw == "" {
 		return []byte("\r\n")
 	}
@@ -479,6 +500,12 @@ func (w *SafeLogWriter) Write(p []byte) (n int, err error) {
 			w.file = f
 			if fi, serr := f.Stat(); serr == nil {
 				w.currentSize = fi.Size()
+				if fi.Size() == 0 {
+					if _, err := f.Write(UTF8BOM); err == nil {
+						w.currentSize = int64(len(UTF8BOM))
+						_ = f.Sync()
+					}
+				}
 			}
 		}
 	}
@@ -526,7 +553,7 @@ func Setup(appDir string, appVersion string) (*SafeLogWriter, error) {
 	log.SetFlags(0)
 	log.SetOutput(writer)
 
-	// Write clear banner: === BobrDobr VPN v1.2.2 Started [PID: %d] ===
+	// Write clear banner: === BobrDobr VPN v1.3.0 Started [PID: %d] ===
 	log.Printf("=== BobrDobr VPN v%s Started [PID: %d] ===", appVersion, os.Getpid())
 
 	return writer, nil

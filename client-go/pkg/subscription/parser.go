@@ -24,7 +24,7 @@ var (
 	ErrInvalidPayload = errors.New("unable to parse subscription payload")
 )
 
-const defaultCabinetURL = "https://persona.netphoenix.ru"
+const defaultCabinetURL = "https://example.com/cloud"
 
 // FormatSubscriptionProfileName ensures the profile has a clean "-sub" suffix.
 func FormatSubscriptionProfileName(name string) string {
@@ -126,10 +126,22 @@ func ParseAmneziaWGConfigText(content string) (*config.AmneziaWGConfig, string, 
 
 // ExtractCabinetURL extracts or discovers the personal cabinet URL.
 func ExtractCabinetURL(raw *rawSubscriptionResponse, subURL string) string {
-	if raw != nil {
-		if u := strings.TrimSpace(raw.CabinetURL); u != "" {
-			return strings.TrimRight(u, "/")
+	if raw != nil && strings.TrimSpace(raw.CabinetURL) != "" {
+		return strings.TrimRight(strings.TrimSpace(raw.CabinetURL), "/")
+	}
+
+	// Try extracting origin domain from subscription URL and construct https://{host}/cloud
+	if subURL != "" {
+		target := strings.TrimSpace(subURL)
+		if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+			target = "https://" + target
 		}
+		if parsed, err := url.Parse(target); err == nil && parsed.Host != "" {
+			return fmt.Sprintf("https://%s/cloud", parsed.Host)
+		}
+	}
+
+	if raw != nil {
 		if u := strings.TrimSpace(raw.DashboardURL); u != "" {
 			return strings.TrimRight(u, "/")
 		}
@@ -140,21 +152,6 @@ func ExtractCabinetURL(raw *rawSubscriptionResponse, subURL string) string {
 			if u := strings.TrimSpace(raw.Server.DashboardURL); u != "" {
 				return strings.TrimRight(u, "/")
 			}
-		}
-	}
-
-	// Try extracting origin domain from subscription URL
-	if subURL != "" {
-		target := strings.TrimSpace(subURL)
-		if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
-			target = "https://" + target
-		}
-		if parsed, err := url.Parse(target); err == nil && parsed.Host != "" {
-			scheme := parsed.Scheme
-			if scheme == "" {
-				scheme = "https"
-			}
-			return fmt.Sprintf("%s://%s", scheme, parsed.Host)
 		}
 	}
 
@@ -380,6 +377,23 @@ func parseFromRawResponse(resp *rawSubscriptionResponse, raw []byte, subURL, use
 	info.IsFrozen = isFrozen
 	info.IsExpired = isExpired
 	info.IsExpiringSoon = isExpiringSoon
+
+	// Check is_frozen from response body or user
+	frozenVal := parseFrozenValue(resp.IsFrozen)
+	if frozenVal == 0 && resp.User != nil {
+		frozenVal = parseFrozenValue(resp.User.IsFrozen)
+	}
+
+	if frozenVal == 2 {
+		info.Status = StatusBlocked
+		info.IsFrozen = true
+		info.IsActive = false
+	} else if frozenVal == 1 {
+		info.Status = StatusExpired
+		info.IsExpired = true
+		info.IsFrozen = true
+		info.IsActive = false
+	}
 
 	// Convert connections to Profiles
 	profiles := make([]config.Profile, 0, len(allConns))

@@ -71,8 +71,18 @@ func TestOpenConnect_ParseLine(t *testing.T) {
 			expectedState: StateDisconnecting,
 		},
 		{
+			name:          "CSTP tunnel established emits Connected",
+			line:          "[openconnect-worker] CSTP tunnel established and ready.",
+			expectedState: StateConnected,
+		},
+		{
 			name:          "Sending BYE packet emits Disconnecting",
 			line:          "Sending BYE packet: Disconnected by user",
+			expectedState: StateDisconnecting,
+		},
+		{
+			name:          "Worker clean shutdown emits Disconnecting",
+			line:          "[openconnect-worker] Logout of session completed (clean shutdown)",
 			expectedState: StateDisconnecting,
 		},
 		{
@@ -261,7 +271,7 @@ func TestOpenConnect_StartStop_WithMockProcess(t *testing.T) {
 	sup := NewOpenConnectSupervisor("openconnect", nil)
 
 	sup.SetCmdFactory(func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		return exec.Command("sleep", "2")
+		return exec.Command("cat")
 	})
 
 	var events []Event
@@ -327,5 +337,114 @@ func TestOpenConnect_StartStop_WithMockProcess(t *testing.T) {
 	}
 	if !hasDisconnected {
 		t.Errorf("expected StateDisconnected event to be emitted")
+	}
+}
+
+func TestOpenConnectWorker_CLIArgs(t *testing.T) {
+	sup := NewOpenConnectSupervisor("openconnect-worker.exe", nil)
+
+	var capturedArgs []string
+	sup.SetCmdFactory(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		return exec.Command("cat")
+	})
+
+	cfg := OpenConnectConfig{
+		Server:           "vpn.example.com",
+		Port:             443,
+		Username:         "alice",
+		Password:         "supersecret",
+		Group:            "kurwa",
+		InterfaceName:    "bobr-oc0",
+		CamouflageSecret: "kurwa",
+		Script:           "some-legacy-script.js",
+		Protocol:         "anyconnect",
+	}
+
+	ctx := context.Background()
+	if err := sup.Start(ctx, cfg); err != nil {
+		t.Fatalf("sup.Start failed: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = sup.Stop(stopCtx)
+	}()
+
+	// 1. Verify required flags according to Subagent 1 specification
+	expectedFlags := []string{
+		"--stdin-control",
+		"--passwd-on-stdin",
+		"--user", "alice",
+		"--authgroup", "kurwa",
+		"--interface", "bobr-oc0",
+	}
+
+	for _, expected := range expectedFlags {
+		found := false
+		for _, arg := range capturedArgs {
+			if arg == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected flag %q in worker capturedArgs: %v", expected, capturedArgs)
+		}
+	}
+
+	// 2. Verify legacy script & protocol flags are NOT present for pure-Go worker
+	for _, arg := range capturedArgs {
+		if arg == "--script" {
+			t.Errorf("forbidden flag --script passed to pure-Go worker: %v", capturedArgs)
+		}
+		if arg == "--protocol" {
+			t.Errorf("forbidden flag --protocol passed to pure-Go worker: %v", capturedArgs)
+		}
+		if strings.Contains(arg, "supersecret") {
+			t.Errorf("password leaked in worker CLI arguments: %v", capturedArgs)
+		}
+	}
+
+	// 3. Verify camouflage target URL
+	lastArg := capturedArgs[len(capturedArgs)-1]
+	if !strings.Contains(lastArg, "https://vpn.example.com") || !strings.Contains(lastArg, "?kurwa") {
+		t.Errorf("expected target URL with camouflage token, got: %s", lastArg)
+	}
+}
+
+func TestOpenConnectWorker_StdinLifecycle(t *testing.T) {
+	sup := NewOpenConnectSupervisor("openconnect-worker.exe", nil)
+
+	sup.SetCmdFactory(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.Command("cat")
+	})
+
+	cfg := OpenConnectConfig{
+		Server:   "vpn.example.com",
+		Username: "bob",
+		Password: "testpassword",
+	}
+
+	ctx := context.Background()
+	if err := sup.Start(ctx, cfg); err != nil {
+		t.Fatalf("sup.Start failed: %v", err)
+	}
+
+	// Verify stdinPipe is kept open while running
+	if sup.stdinPipe == nil {
+		t.Errorf("expected s.stdinPipe to be held open while running")
+	}
+
+	// Stop triggers stdinPipe close and clean process exit
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := sup.Stop(stopCtx); err != nil {
+		t.Fatalf("sup.Stop failed: %v", err)
+	}
+
+	if sup.stdinPipe != nil {
+		t.Errorf("expected s.stdinPipe to be nil after Stop")
 	}
 }

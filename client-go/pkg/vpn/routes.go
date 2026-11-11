@@ -16,22 +16,26 @@ import (
 
 // RouteEntry represents an installed routing table exception.
 type RouteEntry struct {
-	Destination string `json:"destination"`
-	Mask        string `json:"mask"`
-	Gateway     string `json:"gateway"`
-	Metric      int    `json:"metric"`
+	Destination    string `json:"destination"`
+	Mask           string `json:"mask"`
+	Gateway        string `json:"gateway"`
+	Metric         int    `json:"metric"`
+	InterfaceIndex int    `json:"interface_index,omitempty"`
 }
 
 // RouteManager manages bypass routing exceptions for VPN sessions.
 type RouteManager struct {
-	mu            sync.Mutex
-	cachedGateway string
-	activeRoutes  []RouteEntry
+	mu                   sync.Mutex
+	cachedGateway        string
+	cachedInterfaceIndex int
+	cachedInterfaceIP    string
+	activeRoutes         []RouteEntry
 
 	// Pluggable functions for unit testing and mocking
 	routeExecutor func(args ...string) error
 	cmdRunner     func(name string, args ...string) (string, error)
 	resolver      func(ctx context.Context, host string) ([]net.IP, error)
+	ifaceFinder   func(targetIP string) int
 }
 
 // NewRouteManager creates a new RouteManager instance.
@@ -42,11 +46,16 @@ func NewRouteManager() *RouteManager {
 		resolver: func(ctx context.Context, host string) ([]net.IP, error) {
 			return net.DefaultResolver.LookupIP(ctx, "ip4", host)
 		},
+		ifaceFinder: defaultInterfaceFinder,
 	}
 
 	if gw, err := rm.DetectPhysicalGateway(); err == nil && gw != "" {
 		rm.cachedGateway = gw
-		log.Printf("[RouteManager] Discovered active physical default gateway: %s", gw)
+		if rm.cachedInterfaceIndex > 0 {
+			log.Printf("[RouteManager] Discovered active physical default gateway: %s (IF index: %d)", gw, rm.cachedInterfaceIndex)
+		} else {
+			log.Printf("[RouteManager] Discovered active physical default gateway: %s", gw)
+		}
 	}
 
 	return rm
@@ -70,6 +79,12 @@ func (rm *RouteManager) SetResolver(fn func(ctx context.Context, host string) ([
 	rm.resolver = fn
 }
 
+func (rm *RouteManager) SetInterfaceFinder(fn func(targetIP string) int) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.ifaceFinder = fn
+}
+
 func (rm *RouteManager) SetCachedGateway(gw string) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
@@ -82,14 +97,32 @@ func (rm *RouteManager) CachedGateway() string {
 	return rm.cachedGateway
 }
 
+func (rm *RouteManager) SetCachedInterfaceIndex(idx int) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.cachedInterfaceIndex = idx
+}
+
+func (rm *RouteManager) CachedInterfaceIndex() int {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	return rm.cachedInterfaceIndex
+}
+
 func (rm *RouteManager) DetectPhysicalGateway() (string, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
 	out, err := rm.cmdRunner("route", "print", "0.0.0.0")
 	if err == nil {
-		if gw, parseErr := parseDefaultGatewayFromRoutePrint(out); parseErr == nil && gw != "" {
+		if gw, ifaceIP, parseErr := parseDefaultRouteFromRoutePrint(out); parseErr == nil && gw != "" {
 			rm.cachedGateway = gw
+			rm.cachedInterfaceIP = ifaceIP
+			if rm.ifaceFinder != nil && ifaceIP != "" {
+				if idx := rm.ifaceFinder(ifaceIP); idx > 0 {
+					rm.cachedInterfaceIndex = idx
+				}
+			}
 			return gw, nil
 		}
 	}
@@ -112,6 +145,7 @@ func (rm *RouteManager) DetectPhysicalGateway() (string, error) {
 // ApplyBypassRoutes installs more-specific routes pointing to the physical gateway with metric 1.
 // Supports CIDR subnets (e.g., "192.168.1.0/24"), single IPs ("1.2.3.4"), and domains ("gosuslugi.ru").
 // Because of longest-prefix match, these routes take precedence over the default 0.0.0.0/0 VPN route.
+// If the physical interface index is known, the route is explicitly bound to that interface via "if <ifIndex>".
 func (rm *RouteManager) ApplyBypassRoutes(entries []string) (int, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
@@ -121,12 +155,20 @@ func (rm *RouteManager) ApplyBypassRoutes(entries []string) (int, error) {
 	}
 
 	gw := rm.cachedGateway
+	ifIdx := rm.cachedInterfaceIndex
 	if gw == "" {
 		out, err := rm.cmdRunner("route", "print", "0.0.0.0")
 		if err == nil {
-			if detected, parseErr := parseDefaultGatewayFromRoutePrint(out); parseErr == nil {
+			if detected, ifaceIP, parseErr := parseDefaultRouteFromRoutePrint(out); parseErr == nil {
 				gw = detected
 				rm.cachedGateway = gw
+				rm.cachedInterfaceIP = ifaceIP
+				if rm.ifaceFinder != nil && ifaceIP != "" {
+					if idx := rm.ifaceFinder(ifaceIP); idx > 0 {
+						ifIdx = idx
+						rm.cachedInterfaceIndex = idx
+					}
+				}
 			}
 		}
 		if gw == "" {
@@ -205,21 +247,44 @@ func (rm *RouteManager) ApplyBypassRoutes(entries []string) (int, error) {
 
 	addedCount := 0
 	for _, t := range targets {
-		err := rm.routeExecutor("add", t.dest, "mask", t.mask, gw, "metric", "1")
+		alreadyActive := false
+		for _, ar := range rm.activeRoutes {
+			if ar.Destination == t.dest && ar.Mask == t.mask && ar.Gateway == gw {
+				alreadyActive = true
+				break
+			}
+		}
+		if alreadyActive {
+			continue
+		}
+
+		var args []string
+		if ifIdx > 0 {
+			args = []string{"add", t.dest, "mask", t.mask, gw, "metric", "1", "if", fmt.Sprintf("%d", ifIdx)}
+		} else {
+			args = []string{"add", t.dest, "mask", t.mask, gw, "metric", "1"}
+		}
+
+		err := rm.routeExecutor(args...)
 		if err != nil {
-			log.Printf("[RouteManager] Failed to install bypass route for %s (mask %s, gw %s): %v", t.dest, t.mask, gw, err)
+			log.Printf("[RouteManager] Failed to install bypass route for %s (mask %s, gw %s, if %d): %v", t.dest, t.mask, gw, ifIdx, err)
 		} else {
 			rm.activeRoutes = append(rm.activeRoutes, RouteEntry{
-				Destination: t.dest,
-				Mask:        t.mask,
-				Gateway:     gw,
-				Metric:      1,
+				Destination:    t.dest,
+				Mask:           t.mask,
+				Gateway:        gw,
+				Metric:         1,
+				InterfaceIndex: ifIdx,
 			})
 			addedCount++
 		}
 	}
 
-	log.Printf("[RouteManager] Installed %d bypass routes via physical gateway %s", addedCount, gw)
+	if ifIdx > 0 {
+		log.Printf("[RouteManager] Installed %d bypass routes via physical gateway %s (IF %d)", addedCount, gw, ifIdx)
+	} else {
+		log.Printf("[RouteManager] Installed %d bypass routes via physical gateway %s", addedCount, gw)
+	}
 	return addedCount, nil
 }
 
@@ -303,7 +368,7 @@ func ParseBypassExceptionsFile(filePath string) ([]string, error) {
 	return ParseBypassExceptions(f)
 }
 
-func parseDefaultGatewayFromRoutePrint(output string) (string, error) {
+func parseDefaultRouteFromRoutePrint(output string) (string, string, error) {
 	type candidate struct {
 		gw     string
 		iface  string
@@ -343,11 +408,11 @@ func parseDefaultGatewayFromRoutePrint(output string) (string, error) {
 	}
 
 	if len(candidates) == 0 {
-		return "", errors.New("no default gateway found in route print table")
+		return "", "", errors.New("no default gateway found in route print table")
 	}
 
 	if len(candidates) == 1 {
-		return candidates[0].gw, nil
+		return candidates[0].gw, candidates[0].iface, nil
 	}
 
 	best := candidates[0]
@@ -357,7 +422,12 @@ func parseDefaultGatewayFromRoutePrint(output string) (string, error) {
 		}
 	}
 
-	return best.gw, nil
+	return best.gw, best.iface, nil
+}
+
+func parseDefaultGatewayFromRoutePrint(output string) (string, error) {
+	gw, _, err := parseDefaultRouteFromRoutePrint(output)
+	return gw, err
 }
 
 func parseDefaultGatewayFromNetsh(output string) (string, error) {

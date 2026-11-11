@@ -73,7 +73,7 @@ Digitally signs executables (`.exe`), dynamic link libraries (`.dll`), and insta
 powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Sign-Binary.ps1 -FilePath "dist\installer\BobrDobr-Setup.exe"
 
 # Sign multiple binaries
-powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Sign-Binary.ps1 -FilePath "bin\windows\amneziawg-go.exe,bin\windows\openconnect.exe"
+powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Sign-Binary.ps1 -FilePath "bin\windows\amneziawg-go.exe,bin\windows\openconnect-worker.exe"
 ```
 
 ---
@@ -104,13 +104,13 @@ powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Install-Certificate
 ### 4. `Build-Installer.ps1`
 End-to-end automation tool that:
 1. Locates Inno Setup 6 (`ISCC.exe`).
-2. Pre-signs application and backend binaries (`BobrDobr.exe`, `amneziawg-go.exe`, `openconnect.exe`, dlls).
+2. Pre-signs application and backend binaries (`BobrDobr.exe`, `amneziawg-go.exe`, `openconnect-worker.exe`, `wintun.dll`).
 3. Compiles `client-go/build/windows/installer/BobrDobr-Setup.iss` with ultra-compression (`lzma2/ultra64`).
 4. Signs `BobrDobr-Setup.exe` with RFC 3161 timestamping.
 5. Verifies Authenticode status and outputs SHA-256 hash.
 
 **Usage:**
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Build-Installer.ps1 -Version "1.2.0"
+powershell -ExecutionPolicy Bypass -File .\client-go\scripts\Build-Installer.ps1 -Version "1.3.0"
 ```
 Output is placed in `dist/installer/BobrDobr-Setup.exe`.

@@ -7,7 +7,13 @@ import (
 	"syscall"
 )
 
-func configureSysProcAttr(cmd *exec.Cmd) {
+func configureAmneziaProcAttr(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+}
+
+func configureOpenConnectProcAttr(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}

@@ -581,3 +581,27 @@ func TestPlaintextAndLegacyConfigMigration(t *testing.T) {
 		t.Fatalf("unexpected openconnect camouflage: %+v", profs2[1].OpenConnect)
 	}
 }
+
+func TestSettings_SilentTray(t *testing.T) {
+	defaults := DefaultSettings()
+	if defaults.SilentTray != false {
+		t.Fatalf("expected DefaultSettings().SilentTray to be false, got true")
+	}
+
+	rawJSON := `{"close_action":"tray","silent_tray":true}`
+	var s Settings
+	if err := json.Unmarshal([]byte(rawJSON), &s); err != nil {
+		t.Fatalf("json unmarshal failed: %v", err)
+	}
+	if !s.SilentTray {
+		t.Fatalf("expected s.SilentTray to be true, got false")
+	}
+
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("json marshal failed: %v", err)
+	}
+	if string(data) == "" {
+		t.Fatalf("expected non-empty json")
+	}
+}

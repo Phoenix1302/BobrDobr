@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -59,9 +60,24 @@ func getAppDataDir() string {
 }
 
 func findBinaryPath(name string) string {
-	exePath, _ := os.Executable()
-	exeDir := filepath.Dir(exePath)
+	// 1. Primary search: strictly relative to the currently running binary (supports custom install locations)
+	if exePath, err := os.Executable(); err == nil && exePath != "" {
+		exeDir := filepath.Dir(exePath)
+		primaryCandidates := []string{
+			filepath.Join(exeDir, "bin", name),
+			filepath.Join(exeDir, name),
+		}
+		for _, c := range primaryCandidates {
+			if _, err := os.Stat(c); err == nil {
+				if abs, err := filepath.Abs(c); err == nil {
+					return abs
+				}
+				return c
+			}
+		}
+	}
 
+	// 2. Secondary fallback locations (standard Program Files, AppData, dev directories)
 	progFiles := os.Getenv("ProgramFiles")
 	if progFiles == "" {
 		progFiles = `C:\Program Files`
@@ -73,9 +89,7 @@ func findBinaryPath(name string) string {
 		appData = filepath.Join(home, "AppData", "Local")
 	}
 
-	candidates := []string{
-		filepath.Join(exeDir, "bin", name),
-		filepath.Join(exeDir, name),
+	fallbackCandidates := []string{
 		filepath.Join(progFiles, "BobrDobr", "bin", name),
 		filepath.Join(progFiles, "BobrDobr", name),
 		filepath.Join(appData, "Programs", "BobrDobr", "bin", name),
@@ -83,10 +97,12 @@ func findBinaryPath(name string) string {
 		filepath.Join("bin", name),
 		filepath.Join("bin", "windows", name),
 	}
-	for _, c := range candidates {
+	for _, c := range fallbackCandidates {
 		if _, err := os.Stat(c); err == nil {
-			abs, _ := filepath.Abs(c)
-			return abs
+			if abs, err := filepath.Abs(c); err == nil {
+				return abs
+			}
+			return c
 		}
 	}
 	return name
@@ -151,7 +167,47 @@ func buildAmneziaWGConfigText(cfg *config.AmneziaWGConfig) string {
 	return sb.String()
 }
 
+// isSubscriptionExpired checks if subscription has an expiration date configured and if it has passed.
+func isSubscriptionExpired(expiresAt time.Time, now time.Time) bool {
+	if expiresAt.IsZero() || expiresAt.Year() <= 1 {
+		return false
+	}
+	return expiresAt.Before(now)
+}
+
+// getSubscriptionDaysLeft calculates days remaining until expiration and flags if expiring soon (<= 3 days, >= 0).
+func getSubscriptionDaysLeft(expiresAt time.Time, now time.Time) (int, bool) {
+	if expiresAt.IsZero() || expiresAt.Year() <= 1 || expiresAt.Before(now) {
+		return 0, false
+	}
+	daysLeft := int(expiresAt.Sub(now).Hours()/24) + 1
+	if daysLeft <= 3 && daysLeft >= 0 {
+		return daysLeft, true
+	}
+	return daysLeft, false
+}
+
+// canConnectProfile validates whether a profile is allowed to connect based on subscription status.
+// Expired, blocked, or revoked subscription profiles are rejected, while personal/custom profiles always remain accessible.
+func canConnectProfile(p config.Profile, subStatus string, subExpiresAt time.Time, now time.Time) (bool, string) {
+	if p.IsSubscription {
+		if subStatus == "blocked" || subStatus == "banned" {
+			return false, "Подключение к '" + p.Name + "' заблокировано: ваш аккаунт заблокирован администратором. Обратитесь в поддержку."
+		}
+		if subStatus == "revoked" {
+			return false, "Подключение к '" + p.Name + "' заблокировано: токен подписки недействителен или был удален."
+		}
+		if subStatus == "expired" || isSubscriptionExpired(subExpiresAt, now) {
+			return false, fmt.Sprintf("Подключение к '%s' заблокировано: срок действия подписки истёк. Подписные туннели заморожены.", p.Name)
+		}
+	}
+	return true, ""
+}
+
 func main() {
+	SetCurrentProcessExplicitAppUserModelID("BobrDobr.VPN.Client")
+	ensureAppUserModelIDRegistry()
+
 	defer func() {
 		if r := recover(); r != nil {
 			crash.HandleCrash(r, "Top-level main()")
@@ -161,7 +217,7 @@ func main() {
 
 	// 0. Initialize robust persistent file logging with automatic rotation and safe stdout fallback
 	appDir := getAppDataDir()
-	logWriter, err := logger.Setup(appDir, "1.2.2")
+	logWriter, err := logger.Setup(appDir, "1.3.0")
 	if err == nil {
 		defer logWriter.Close()
 	}
@@ -182,22 +238,65 @@ func main() {
 		}
 	}()
 
+	// 1. Single Instance Protection & Named Pipe IPC
+	// Note: We check single instance BEFORE elevation so that secondary protocol activations
+	// (e.g. clicking toast notifications or buttons) run unelevated (asInvoker), deliver the IPC
+	// message to the running instance in 2ms, and exit without triggering any UAC prompts!
+	instance := singleinstance.New(singleinstance.DefaultMutexName, singleinstance.DefaultPipeName)
+	acquired, err := instance.TryAcquire()
+	if err != nil {
+		log.Printf("[ПРОТЕЧКА] Ошибка проверки единственного экземпляра: %v", err)
+	}
+
+	if !acquired {
+		log.Println("[БОБР] Обнаружен работающий экземпляр БобрДобр VPN.")
+		allowSetForegroundWindow()
+		resp, pingErr := instance.SendMessage(singleinstance.MsgPing, 2*time.Second)
+		if pingErr == nil && resp == singleinstance.RespPong {
+			handledAction := false
+			isMinimizedArg := false
+			for _, arg := range os.Args[1:] {
+				low := strings.ToLower(arg)
+				if strings.EqualFold(arg, "--minimized") || strings.EqualFold(arg, "-minimized") {
+					isMinimizedArg = true
+				}
+				if strings.Contains(low, "disable-notifications") {
+					log.Println("[БОБР] Передача IPC флага: --disable-notifications")
+					_, _ = instance.SendMessage("--disable-notifications", 2*time.Second)
+					handledAction = true
+				}
+				if strings.Contains(low, "silent-tray") {
+					log.Println("[БОБР] Передача IPC флага: --silent-tray")
+					_, _ = instance.SendMessage("--silent-tray", 2*time.Second)
+					handledAction = true
+				}
+				if strings.Contains(low, "activate") || strings.Contains(low, "toggle") {
+					log.Println("[БОБР] Передача IPC флага: activate")
+					_, _ = instance.SendMessage(singleinstance.MsgActivate, 2*time.Second)
+					handledAction = true
+				}
+			}
+			if !isMinimizedArg && !handledAction {
+				log.Println("[БОБР] Активный экземпляр откликнулся на PING. Вывод на передний план...")
+				_, _ = instance.SendMessage(singleinstance.MsgActivate, 2*time.Second)
+			}
+			time.Sleep(100 * time.Millisecond)
+			os.Exit(0)
+		} else {
+			log.Printf("[ВНИМАНИЕ] Другой процесс удерживает блокировку, но не отвечает: %v", pingErr)
+		}
+	}
+
 	// 0c. Guarantee UAC elevation for Wintun and network route management
 	if !gui.IsElevated() {
+		_ = instance.Release()
 		if err := gui.RelaunchAsAdmin(); err == nil {
 			os.Exit(0)
 		}
 		log.Printf("[ВНИМАНИЕ] Не удалось автоматически повысить привилегии: продолжение работы")
 	}
 
-	log.Println("[БОБР] Запуск BobrDobr VPN v1.2.2 (Go Native Engine)...")
-
-	// 1. Single Instance Protection & Named Pipe IPC
-	instance := singleinstance.New(singleinstance.DefaultMutexName, singleinstance.DefaultPipeName)
-	acquired, err := instance.TryAcquire()
-	if err != nil {
-		log.Printf("[ПРОТЕЧКА] Ошибка проверки единственного экземпляра: %v", err)
-	}
+	log.Println("[БОБР] Запуск БобрДобр VPN v1.3.0 (Go Native Engine)...")
 
 	// 2. Initialize encrypted configuration store
 	store, err := config.NewStore(configPath)
@@ -220,9 +319,15 @@ func main() {
 		defer jobObject.Close()
 	}
 
-	// Locate binary engines
+	// Locate binary engines (preferring pure-Go openconnect-worker.exe)
 	amneziaBin := findBinaryPath("amneziawg-go.exe")
-	openconnectBin := findBinaryPath("openconnect.exe")
+	openconnectBin := findBinaryPath("openconnect-worker.exe")
+	if _, err := os.Stat(openconnectBin); err != nil {
+		legacy := findBinaryPath("openconnect.exe")
+		if _, err2 := os.Stat(legacy); err2 == nil {
+			openconnectBin = legacy
+		}
+	}
 	wintunDll := findBinaryPath("wintun.dll")
 	vpncScript := findBinaryPath("vpnc-script-win.js")
 
@@ -239,12 +344,34 @@ func main() {
 	// 5. Initialize GUI (Spacious Desktop Window)
 	ui := gui.NewGUI("БобрДобр VPN", 920, 820)
 
-	// Check for --minimized / -minimized startup argument (start hidden to tray)
+	// Check startup CLI arguments
 	startMinimized := false
+	disableNotificationsCLI := false
+	silentTrayCLI := false
 	for _, arg := range os.Args[1:] {
+		low := strings.ToLower(arg)
 		if strings.EqualFold(arg, "--minimized") || strings.EqualFold(arg, "-minimized") {
 			startMinimized = true
-			break
+		}
+		if strings.Contains(low, "disable-notifications") {
+			disableNotificationsCLI = true
+		}
+		if strings.Contains(low, "silent-tray") {
+			silentTrayCLI = true
+		}
+	}
+
+	if disableNotificationsCLI || silentTrayCLI {
+		st, err := store.GetSettings()
+		if err == nil {
+			if disableNotificationsCLI {
+				st.Notifications = false
+			}
+			if silentTrayCLI {
+				st.SilentTray = true
+			}
+			_ = store.SaveSettings(st)
+			log.Printf("[БОБР] CLI флаги применены к настройкам: Notifications=%v, SilentTray=%v", st.Notifications, st.SilentTray)
 		}
 	}
 
@@ -271,19 +398,6 @@ func main() {
 		}()
 	}
 
-	// If another instance is running, activate it or show conflict dialog
-	if !acquired {
-		log.Println("[БОБР] Обнаружен работающий экземпляр BobrDobr VPN.")
-		resp, pingErr := instance.SendMessage(singleinstance.MsgPing, 2*time.Second)
-		if pingErr == nil && resp == singleinstance.RespPong {
-			log.Println("[БОБР] Активный экземпляр откликнулся на PING. Вывод на передний план...")
-			_, _ = instance.SendMessage(singleinstance.MsgActivate, 2*time.Second)
-			time.Sleep(300 * time.Millisecond)
-			os.Exit(0)
-		} else {
-			log.Printf("[ВНИМАНИЕ] Другой процесс удерживает блокировку, но не отвечает: %v", pingErr)
-		}
-	}
 
 	// Start IPC server to listen for future conflict / activation signals
 	ipcCtx, cancelIPC := context.WithCancel(context.Background())
@@ -291,14 +405,33 @@ func main() {
 
 	_ = instance.StartIPCServer(ipcCtx, func(msg string) (string, error) {
 		log.Printf("[БОБР] Получена IPC команда: %s", msg)
-		switch msg {
-		case singleinstance.MsgPing:
+		trimmed := strings.TrimSpace(msg)
+		switch {
+		case trimmed == singleinstance.MsgPing:
 			return singleinstance.RespPong, nil
-		case singleinstance.MsgActivate:
+		case trimmed == singleinstance.MsgActivate:
 			ui.Show()
 			ui.Emit("activateWindow", map[string]bool{"focus": true})
 			return singleinstance.RespOK, nil
-		case singleinstance.MsgKill:
+		case strings.EqualFold(trimmed, "--disable-notifications") || strings.EqualFold(trimmed, "-disable-notifications") || strings.EqualFold(trimmed, "DISABLE_NOTIFICATIONS") || strings.Contains(strings.ToLower(trimmed), "disable-notifications"):
+			st, err := store.GetSettings()
+			if err == nil {
+				st.Notifications = false
+				_ = store.SaveSettings(st)
+				ui.Emit("settingsLoaded", st)
+				log.Println("[БОБР] IPC: уведомления отключены (--disable-notifications), настройки обновлены в UI")
+			}
+			return singleinstance.RespOK, nil
+		case strings.EqualFold(trimmed, "--silent-tray") || strings.EqualFold(trimmed, "-silent-tray") || strings.EqualFold(trimmed, "SILENT_TRAY") || strings.Contains(strings.ToLower(trimmed), "silent-tray"):
+			st, err := store.GetSettings()
+			if err == nil {
+				st.SilentTray = true
+				_ = store.SaveSettings(st)
+				ui.Emit("settingsLoaded", st)
+				log.Println("[БОБР] IPC: режим тишины трея включен (--silent-tray), настройки обновлены в UI")
+			}
+			return singleinstance.RespOK, nil
+		case trimmed == singleinstance.MsgKill:
 			log.Println("[БОБР] Получен сигнал завершения от другого экземпляра. Освобождение ресурсов...")
 			go func() {
 				time.Sleep(200 * time.Millisecond)
@@ -321,6 +454,7 @@ func main() {
 	var activeBypassDomains []string
 	var isRunning bool
 	var isSwitching bool
+	var tunnelConnected bool
 
 	// Stop any running tunnel
 	var stopCurrentTunnel func()
@@ -342,9 +476,13 @@ func main() {
 			}
 		},
 		func() {
-			// onSettings
+			// onSettings: activate window and open settings modal
 			ui.Show()
-			ui.Emit("openSettings", nil)
+			ui.Emit("openSettings", map[string]interface{}{})
+			go func() {
+				time.Sleep(80 * time.Millisecond)
+				ui.Emit("openSettings", map[string]interface{}{})
+			}()
 		},
 		func() {
 			// onExit
@@ -383,35 +521,56 @@ func main() {
 			tunnelMu.Lock()
 			switching := isSwitching
 			curProto := activeProtocol
+			if curProto == "" {
+				curProto = proto
+			}
 			curAdapter := activeAdapter
 			curProfName := activeProfileName
+			if curProfName == "" {
+				curProfName = "Основной"
+			}
+			wasConnected := tunnelConnected
 
 			if ev.State == vpn.StateConnected {
 				tag = "ПЛОТИНА"
 				isRunning = true
+				tunnelConnected = true
 				if systemTray != nil {
 					systemTray.SetStatus(true, curProfName)
 				}
 
-				// Apply host routing exceptions for bypass
-				bypassToApply := make([]string, len(activeBypassDomains))
-				copy(bypassToApply, activeBypassDomains)
+				if !wasConnected {
+					settings, _ := store.GetSettings()
+					if settings.Notifications && systemTray != nil {
+						systemTray.ShowActionNotification(
+							"🟢 БобрДобр VPN — Защищено",
+							fmt.Sprintf("Подключение успешно установлено: %s [%s]", curProfName, curProto),
+							"⚙️ Отключить уведомления",
+							"bobrdobr://action/disable-notifications",
+						)
+					}
 
-				if len(bypassToApply) > 0 {
-					go func(exceptions []string) {
-						defer crash.Recover("ApplyBypassRoutes")
-						ui.Log(fmt.Sprintf("Применение исключений маршрутизации (%d записей)...", len(exceptions)), "МАРШРУТЫ")
-						added, err := routeMgr.ApplyBypassRoutes(exceptions)
-						if err != nil {
-							ui.Log(fmt.Sprintf("Ошибка настройки маршрутов обхода: %v", err), "ПРОТЕЧКА")
-						} else {
-							ui.Log(fmt.Sprintf("Маршруты обхода активированы: %d адресов направлено через физический шлюз", added), "МАРШРУТЫ")
-						}
-					}(bypassToApply)
+					// Apply host routing exceptions for bypass strictly ONCE upon establishing connection
+					bypassToApply := make([]string, len(activeBypassDomains))
+					copy(bypassToApply, activeBypassDomains)
+
+					if len(bypassToApply) > 0 {
+						go func(exceptions []string) {
+							defer crash.Recover("ApplyBypassRoutes")
+							ui.Log(fmt.Sprintf("Применение исключений маршрутизации (%d записей)...", len(exceptions)), "МАРШРУТЫ")
+							added, err := routeMgr.ApplyBypassRoutes(exceptions)
+							if err != nil {
+								ui.Log(fmt.Sprintf("Ошибка настройки маршрутов обхода: %v", err), "ПРОТЕЧКА")
+							} else {
+								ui.Log(fmt.Sprintf("Маршруты обхода активированы: %d адресов направлено через физический шлюз", added), "МАРШРУТЫ")
+							}
+						}(bypassToApply)
+					}
 				}
 			} else if ev.State == vpn.StateDisconnected || ev.State == vpn.StateError {
 				if !switching {
 					isRunning = false
+					tunnelConnected = false
 					activeBypassDomains = nil
 					if systemTray != nil {
 						systemTray.SetStatus(false, "")
@@ -420,6 +579,30 @@ func main() {
 				}
 				if ev.State == vpn.StateError {
 					tag = "ПРОТЕЧКА"
+					tunnelConnected = false
+					if stateChanged {
+						settings, _ := store.GetSettings()
+						if settings.Notifications && systemTray != nil {
+							systemTray.ShowActionNotification(
+								"⚠️ БобрДобр VPN — Сбой",
+								fmt.Sprintf("Сбой гидротурбины: %s", ev.Message),
+								"⚙️ Отключить уведомления",
+								"bobrdobr://action/disable-notifications",
+							)
+						}
+					}
+				} else if ev.State == vpn.StateDisconnected {
+					if !switching && wasConnected {
+						settings, _ := store.GetSettings()
+						if settings.Notifications && systemTray != nil {
+							systemTray.ShowActionNotification(
+								"🔴 БобрДобр VPN — Отключено",
+								fmt.Sprintf("Туннель отключён: %s", curProfName),
+								"⚙️ Отключить уведомления",
+								"bobrdobr://action/disable-notifications",
+							)
+						}
+					}
 				}
 			}
 			tunnelMu.Unlock()
@@ -461,14 +644,12 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		defer cancel()
 
-		if activeProto == "openconnect" {
+		if activeProto == "openconnect" || openconnectSup.IsRunning() {
 			_ = openconnectSup.Stop(ctx)
-		} else {
+		}
+		if activeProto == "amneziawg" || amneziaSup.IsRunning() {
 			_ = amneziaSup.Stop(ctx)
 		}
-		// Also ensure both supervisors are completely stopped
-		_ = amneziaSup.Stop(ctx)
-		_ = openconnectSup.Stop(ctx)
 
 		// Cleanly remove any bypass routes
 		if n := routeMgr.ClearBypassRoutes(); n > 0 {
@@ -494,8 +675,30 @@ func main() {
 			transitionMu.Lock()
 			defer transitionMu.Unlock()
 
+			if p.IsSubscription {
+				st, _ := store.GetSettings()
+				if allowed, blockReason := canConnectProfile(p, st.SubscriptionStatus, st.SubscriptionExpiresAt, time.Now()); !allowed {
+					ui.Log(blockReason, "ОШИБКА")
+					ui.Emit("toastError", map[string]interface{}{
+						"message": blockReason,
+					})
+					if systemTray != nil && st.Notifications {
+						systemTray.ShowNotification("БобрДобр VPN - Подключение заблокировано", blockReason)
+					}
+					tunnelMu.Lock()
+					isSwitching = false
+					tunnelMu.Unlock()
+					ui.Emit("stateChange", map[string]interface{}{
+						"status":  "disconnected",
+						"message": blockReason,
+					})
+					return
+				}
+			}
+
 			tunnelMu.Lock()
 			isSwitching = true
+			tunnelConnected = false
 			tunnelMu.Unlock()
 
 			stopCurrentTunnel()
@@ -506,14 +709,15 @@ func main() {
 				bypassList = append(bypassList, p.BypassDomains...)
 			}
 			// Load from %APPDATA%\BobrDobr\bypass.txt if present
-			appData := os.Getenv("APPDATA")
-			if appData == "" {
-				home, _ := os.UserHomeDir()
-				appData = filepath.Join(home, "AppData", "Roaming")
-			}
-			bypassFile := filepath.Join(appData, "BobrDobr", "bypass.txt")
+			bypassFile := filepath.Join(appDir, "bypass.txt")
 			if fileEntries, err := vpn.ParseBypassExceptionsFile(bypassFile); err == nil && len(fileEntries) > 0 {
 				bypassList = append(bypassList, fileEntries...)
+			}
+
+			// Pre-resolve bypass domain entries while tunnel is DOWN and local DNS cache is flushed.
+			// This prevents the VPN server's DNS intercept/spoofing from corrupting route targets.
+			if len(bypassList) > 0 {
+				bypassList = vpn.PreResolveBypassEntries(bypassList)
 			}
 
 			// Clean existing bypass routes and detect physical gateway before tunnel establishes
@@ -578,6 +782,27 @@ func main() {
 				} else if p.AmneziaConfig != nil {
 					confText = buildAmneziaWGConfigText(p.AmneziaConfig)
 				}
+
+				// If bypass exceptions exist, calculate adjusted AllowedIPs to allow bypass traffic
+				// past WireGuard's WFP firewall filter on Windows.
+				if len(bypassList) > 0 {
+					origAllowed := vpn.ExtractAllowedIPsFromConfig(confText)
+					if origAllowed == "" && p.AmneziaConfig != nil && p.AmneziaConfig.AllowedIPs != "" {
+						origAllowed = p.AmneziaConfig.AllowedIPs
+					}
+					if origAllowed == "" {
+						origAllowed = "0.0.0.0/0, ::/0"
+					}
+
+					adjustedAllowed, err := vpn.CalculateAllowedIPsForBypass(origAllowed, bypassList, nil)
+					if err == nil && adjustedAllowed != "" {
+						confText = vpn.ReplaceAllowedIPsInConfig(confText, adjustedAllowed)
+						ui.Log(fmt.Sprintf("Пересчитан AllowedIPs для AmneziaWG: исключено %d адресов/подсетей", len(bypassList)), "МАРШРУТЫ")
+					} else if err != nil {
+						ui.Log(fmt.Sprintf("Предупреждение: не удалось пересчитать AllowedIPs: %v", err), "МАРШРУТЫ")
+					}
+				}
+
 				cfg := vpn.AmneziaConfig{
 					BinaryPath:    amneziaBin,
 					ConfigContent: confText,
@@ -603,6 +828,173 @@ func main() {
 				})
 			}
 		}()
+	}
+
+	calculateDaysLeft := func(expiresAt time.Time) int {
+		if expiresAt.IsZero() || expiresAt.Year() <= 1 {
+			return 9999
+		}
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		expDate := time.Date(expiresAt.Year(), expiresAt.Month(), expiresAt.Day(), 0, 0, 0, 0, expiresAt.Location())
+		return int(expDate.Sub(today).Hours() / 24)
+	}
+
+	daysDeclension := func(n int) string {
+		abs := n
+		if abs < 0 {
+			abs = -abs
+		}
+		rem100 := abs % 100
+		rem10 := abs % 10
+		if rem100 > 10 && rem100 < 20 {
+			return "дней"
+		}
+		if rem10 > 1 && rem10 < 5 {
+			return "дня"
+		}
+		if rem10 == 1 {
+			return "день"
+		}
+		return "дней"
+	}
+
+	// Helper to handle subscription status transitions and enforcement
+	handleSubscriptionStateChange := func(st *config.Settings, status string, srvErr *subscription.ServerError, info *subscription.SubscriptionInfo) {
+		if st == nil {
+			cur, _ := store.GetSettings()
+			st = &cur
+		}
+
+		if status == "ratelimit" {
+			ui.Log("Сработала защита от частых запросов (429). Используются кэшированные профили.", "ВНИМАНИЕ")
+			return
+		}
+
+		// Check if VPN is currently connected to a subscription profile
+		tunnelMu.Lock()
+		curActiveID := activeProfileID
+		curConnected := tunnelConnected || isRunning
+		tunnelMu.Unlock()
+
+		isSubConnected := false
+		if curConnected && curActiveID != "" {
+			if actProf, err := store.GetProfile(curActiveID); err == nil && actProf.IsSubscription {
+				isSubConnected = true
+			}
+		}
+
+		// If status is "blocked", "expired", or "revoked" and VPN is connected:
+		if (status == "blocked" || status == "expired" || status == "revoked") && isSubConnected {
+			// Immediately terminate tunnel: stopCurrentTunnel()!
+			stopCurrentTunnel()
+			disconnectMsg := fmt.Sprintf("Туннель принудительно остановлен: подписка '%s'", status)
+			if status == "blocked" {
+				disconnectMsg = "Туннель остановлен: ваш аккаунт заблокирован администратором."
+			} else if status == "expired" {
+				disconnectMsg = "Туннель остановлен: срок действия вашей подписки истёк."
+			} else if status == "revoked" {
+				disconnectMsg = "Туннель остановлен: токен подписки недействителен или был удален."
+			}
+			ui.Log(disconnectMsg, "ОШИБКА")
+			ui.Emit("stateChange", map[string]interface{}{
+				"status":  "disconnected",
+				"message": disconnectMsg,
+			})
+		}
+
+		// Update settings in store:
+		st.SubscriptionStatus = status
+		if status == "expired" || status == "blocked" {
+			st.SubscriptionExpiresAt = time.Now().Add(-24 * time.Hour) // ensure cached date is permanently in the past!
+		} else if info != nil && !info.ExpiresAt.IsZero() {
+			st.SubscriptionExpiresAt = info.ExpiresAt
+		}
+		if info != nil {
+			if info.Username != "" {
+				st.SubscriptionUsername = info.Username
+			}
+			if info.ServerHost != "" {
+				st.SubscriptionServer = info.ServerHost
+			}
+			if info.UserID != "" {
+				st.SubscriptionToken = info.UserID
+			}
+		}
+		st.LastSyncTime = time.Now()
+		_ = store.SaveSettings(*st)
+
+		// Determine cabinet_url and message
+		cabinetURL := ""
+		msg := ""
+		if srvErr != nil {
+			cabinetURL = srvErr.CabinetURL
+			msg = srvErr.Message
+		} else if info != nil {
+			cabinetURL = info.CabinetURL
+		}
+		if cabinetURL == "" && st.SubscriptionURL != "" {
+			cabinetURL = subscription.ExtractCabinetURL(nil, st.SubscriptionURL)
+		}
+
+		// Emit UI events:
+		switch status {
+		case "blocked":
+			if msg == "" {
+				msg = "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку."
+			}
+			ui.Emit("subscriptionBlocked", map[string]interface{}{
+				"message":     msg,
+				"cabinet_url": cabinetURL,
+			})
+			if systemTray != nil && st.Notifications {
+				systemTray.ShowNotification("БобрДобр VPN - Аккаунт заблокирован", msg)
+			}
+		case "expired":
+			if msg == "" {
+				msg = "Срок действия подписки истёк. Продлите доступ в личном кабинете веб-панели."
+			}
+			ui.Emit("subscriptionExpiredNotification", map[string]interface{}{
+				"message":     msg,
+				"cabinet_url": cabinetURL,
+				"expires_at":  st.SubscriptionExpiresAt.Format("02.01.2006"),
+			})
+			if systemTray != nil && st.Notifications {
+				systemTray.ShowNotification("БобрДобр VPN - Подписка истекла", msg)
+			}
+		case "revoked":
+			if msg == "" {
+				msg = "Токен подписки недействителен или был удален. Скопируйте новую ссылку в веб-панели."
+			}
+			ui.Emit("subscriptionRevoked", map[string]interface{}{
+				"message":     msg,
+				"cabinet_url": cabinetURL,
+			})
+			if systemTray != nil && st.Notifications {
+				systemTray.ShowNotification("БобрДобр VPN - Токен отозван", msg)
+			}
+		}
+
+		expStr := "Бессрочно"
+		if !st.SubscriptionExpiresAt.IsZero() && st.SubscriptionExpiresAt.Year() > 1 {
+			expStr = st.SubscriptionExpiresAt.Format("02.01.2006")
+		}
+		ui.Emit("subscriptionUpdated", map[string]interface{}{
+			"subscription": map[string]interface{}{
+				"url":        st.SubscriptionURL,
+				"username":   st.SubscriptionUsername,
+				"server":     st.SubscriptionServer,
+				"status":     status,
+				"expires_at": expStr,
+				"last_sync":  st.LastSyncTime.Format("15:04:05"),
+			},
+		})
+
+		updatedProfiles, _ := store.ListProfiles()
+		ui.Emit("profilesUpdated", map[string]interface{}{
+			"profiles":        updatedProfiles,
+			"activeProfileId": st.ActiveProfileID,
+		})
 	}
 
 	// Register GUI handlers
@@ -647,10 +1039,19 @@ func main() {
 			lastSyncStr = settings.LastSyncTime.Format("02.01.2006 15:04")
 		}
 
+		status := settings.SubscriptionStatus
+		if status == "" {
+			if !settings.SubscriptionExpiresAt.IsZero() && settings.SubscriptionExpiresAt.Before(time.Now()) {
+				status = "expired"
+			} else {
+				status = "active"
+			}
+		}
+
 		subInfo := map[string]interface{}{
 			"url":        settings.SubscriptionURL,
 			"last_sync":  lastSyncStr,
-			"status":     "active",
+			"status":     status,
 			"expires_at": expStr,
 			"username":   username,
 			"server":     server,
@@ -660,48 +1061,108 @@ func main() {
 		})
 		ui.Emit("settingsLoaded", settings)
 
+		if status == "blocked" || status == "banned" {
+			ui.Log("Аккаунт заблокирован администратором. Подписные туннели заблокированы.", "БОБР")
+			ui.Emit("subscriptionBlocked", map[string]interface{}{
+				"message":     "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку.",
+				"cabinet_url": subscription.ExtractCabinetURL(nil, settings.SubscriptionURL),
+			})
+			if settings.Notifications && systemTray != nil {
+				systemTray.ShowNotification("БобрДобр VPN - Аккаунт заблокирован", "Ваш аккаунт заблокирован администратором.")
+			}
+		} else if status == "revoked" {
+			ui.Log("Токен подписки недействителен или отозван.", "БОБР")
+			ui.Emit("subscriptionRevoked", map[string]interface{}{
+				"message":     "Токен подписки недействителен или был удален.",
+				"cabinet_url": subscription.ExtractCabinetURL(nil, settings.SubscriptionURL),
+			})
+		} else if status == "expired" || (!settings.SubscriptionExpiresAt.IsZero() && settings.SubscriptionExpiresAt.Year() > 1 && settings.SubscriptionExpiresAt.Before(time.Now())) {
+			ui.Log("Срок действия подписки истёк. Подписные туннели заморожены.", "БОБР")
+			ui.Emit("subscriptionExpiredNotification", map[string]interface{}{
+				"message":     "Срок действия вашей подписки истёк. Подписные туннели заморожены.",
+				"expires_at":  settings.SubscriptionExpiresAt.Format("02.01.2006"),
+				"cabinet_url": subscription.ExtractCabinetURL(nil, settings.SubscriptionURL),
+			})
+			if settings.Notifications && systemTray != nil {
+				systemTray.ShowNotification("БобрДобр VPN - Подписка истекла", "Срок действия подписки истёк. Подписные туннели заморожены.")
+			}
+		} else if !settings.SubscriptionExpiresAt.IsZero() && settings.SubscriptionExpiresAt.Year() > 1 {
+			daysLeft := calculateDaysLeft(settings.SubscriptionExpiresAt)
+			if daysLeft <= 3 && daysLeft >= 0 {
+				ui.Log(fmt.Sprintf("Внимание: до окончания подписки осталось %d дн.", daysLeft), "БОБР")
+				msg := fmt.Sprintf("Срок действия подписки истекает (осталось %d %s). Пожалуйста, продлите доступ.", daysLeft, daysDeclension(daysLeft))
+				if daysLeft == 0 {
+					msg = "Срок действия подписки истекает сегодня. Пожалуйста, продлите доступ."
+				}
+				ui.Emit("subscriptionExpiringNotification", map[string]interface{}{
+					"days_left":   daysLeft,
+					"message":     msg,
+					"expires_at":  settings.SubscriptionExpiresAt.Format("02.01.2006"),
+					"cabinet_url": subscription.ExtractCabinetURL(nil, settings.SubscriptionURL),
+				})
+				if settings.Notifications && systemTray != nil {
+					systemTray.ShowNotification("БобрДобр VPN - Подписка истекает", msg)
+				}
+			}
+		}
+
 		if settings.SubscriptionURL != "" {
 			go func(subURL string) {
 				defer crash.Recover("Startup silent subscription sync")
 				time.Sleep(1500 * time.Millisecond)
 				subClient := subscription.NewClient(subscription.WithTimeout(15 * time.Second))
 				info, err := subClient.FetchSubscription(context.Background(), subURL)
+				st, _ := store.GetSettings()
 				if err != nil {
 					log.Printf("[БОБР] Фоновая синхронизация подписки: %v", err)
+					var srvErr *subscription.ServerError
+					if errors.As(err, &srvErr) {
+						switch srvErr.Code {
+						case subscription.CodeAccountBlocked:
+							handleSubscriptionStateChange(&st, "blocked", srvErr, nil)
+						case subscription.CodeSubExpired:
+							handleSubscriptionStateChange(&st, "expired", srvErr, nil)
+						case subscription.CodeTokenRevoked:
+							handleSubscriptionStateChange(&st, "revoked", srvErr, nil)
+						case subscription.CodeRateLimited:
+							handleSubscriptionStateChange(&st, "ratelimit", srvErr, nil)
+						}
+					}
+					return
+				}
+
+				if info.Status == subscription.StatusBlocked || info.Status == subscription.StatusBanned {
+					handleSubscriptionStateChange(&st, "blocked", nil, info)
+					return
+				}
+				if info.Status == subscription.StatusExpired || info.IsExpired {
+					handleSubscriptionStateChange(&st, "expired", nil, info)
 					return
 				}
 
 				for _, p := range info.Profiles {
 					_ = store.SaveProfile(p)
 				}
-				st, _ := store.GetSettings()
-				st.SubscriptionURL = subURL
-				st.SubscriptionToken = info.UserID
-				st.SubscriptionUsername = info.Username
-				st.SubscriptionServer = info.ServerHost
-				st.SubscriptionExpiresAt = info.ExpiresAt
-				st.LastSyncTime = time.Now()
-				_ = store.SaveSettings(st)
+				handleSubscriptionStateChange(&st, "active", nil, info)
 
-				updatedProfiles, _ := store.ListProfiles()
-				ui.Emit("profilesUpdated", map[string]interface{}{
-					"profiles":        updatedProfiles,
-					"activeProfileId": st.ActiveProfileID,
-				})
-
-				silentExp := "Бессрочно"
 				if !info.ExpiresAt.IsZero() && info.ExpiresAt.Year() > 1 {
-					silentExp = info.ExpiresAt.Format("02.01.2006")
+					diffDays := calculateDaysLeft(info.ExpiresAt)
+
+					if diffDays < 0 {
+						handleSubscriptionStateChange(&st, "expired", nil, info)
+					} else if diffDays <= 3 {
+						msg := fmt.Sprintf("Срок действия подписки истекает (осталось %d %s). Пожалуйста, продлите доступ.", diffDays, daysDeclension(diffDays))
+						if diffDays == 0 {
+							msg = "Срок действия подписки истекает сегодня. Пожалуйста, продлите доступ."
+						}
+						ui.Emit("subscriptionExpiringNotification", map[string]interface{}{
+							"expires_at":  info.ExpiresAt.Format("02.01.2006"),
+							"days_left":   diffDays,
+							"message":     msg,
+							"cabinet_url": info.CabinetURL,
+						})
+					}
 				}
-				ui.Emit("subscriptionUpdated", map[string]interface{}{
-					"subscription": map[string]interface{}{
-						"url":        st.SubscriptionURL,
-						"username":   info.Username,
-						"server":     info.ServerHost,
-						"expires_at": silentExp,
-						"last_sync":  time.Now().Format("15:04:05"),
-					},
-				})
 				ui.Log(fmt.Sprintf("Фоновая синхронизация подписки завершена: профилей %d", len(info.Profiles)), "БОБР")
 			}(settings.SubscriptionURL)
 		}
@@ -759,6 +1220,20 @@ func main() {
 				targetProfile = &profiles[0]
 			}
 			if targetProfile != nil {
+				if allowed, blockReason := canConnectProfile(*targetProfile, settings.SubscriptionStatus, settings.SubscriptionExpiresAt, time.Now()); !allowed {
+					ui.Log(blockReason, "ОШИБКА")
+					ui.Emit("toastError", map[string]interface{}{
+						"message": blockReason,
+					})
+					if systemTray != nil && settings.Notifications {
+						systemTray.ShowNotification("БобрДобр VPN - Подключение заблокировано", blockReason)
+					}
+					ui.Emit("stateChange", map[string]interface{}{
+						"status":  "disconnected",
+						"message": blockReason,
+					})
+					return
+				}
 				startProfileTunnel(*targetProfile)
 			} else {
 				ui.Log("Нет активного профиля для подключения. Выберите профиль из списка.", "ВНИМАНИЕ")
@@ -784,6 +1259,20 @@ func main() {
 			p, err := store.GetProfile(req.ID)
 			if err == nil {
 				settings, _ := store.GetSettings()
+				if allowed, blockReason := canConnectProfile(p, settings.SubscriptionStatus, settings.SubscriptionExpiresAt, time.Now()); !allowed {
+					ui.Log(blockReason, "ОШИБКА")
+					ui.Emit("toastError", map[string]interface{}{
+						"message": blockReason,
+					})
+					if systemTray != nil && settings.Notifications {
+						systemTray.ShowNotification("БобрДобр VPN - Подключение заблокировано", blockReason)
+					}
+					ui.Emit("stateChange", map[string]interface{}{
+						"status":  "disconnected",
+						"message": blockReason,
+					})
+					return
+				}
 				settings.ActiveProfileID = req.ID
 				_ = store.SaveSettings(settings)
 				startProfileTunnel(p)
@@ -812,12 +1301,25 @@ func main() {
 			ID string `json:"id"`
 		}
 		if err := json.Unmarshal(payload, &req); err == nil && req.ID != "" {
-			_ = store.DeleteProfile(req.ID)
+			tunnelMu.Lock()
+			running := isRunning || amneziaSup.IsRunning() || openconnectSup.IsRunning()
+			currentID := activeProfileID
+			tunnelMu.Unlock()
+
 			settings, _ := store.GetSettings()
+			if running && (currentID == req.ID || settings.ActiveProfileID == req.ID) {
+				ui.Log(fmt.Sprintf("Удаляемый профиль '%s' активен — принудительный разрыв VPN-соединения...", req.ID), "БОБР")
+				if stopCurrentTunnel != nil {
+					stopCurrentTunnel()
+				}
+			}
+
+			_ = store.DeleteProfile(req.ID)
+			updatedSettings, _ := store.GetSettings()
 			profiles, _ := store.ListProfiles()
 			ui.Emit("profilesUpdated", map[string]interface{}{
 				"profiles":        profiles,
-				"activeProfileId": settings.ActiveProfileID,
+				"activeProfileId": updatedSettings.ActiveProfileID,
 			})
 			ui.Log("Профиль удалён", "БОБР")
 		}
@@ -844,9 +1346,65 @@ func main() {
 			subClient := subscription.NewClient(subscription.WithTimeout(10 * time.Second))
 			info, err := subClient.FetchSubscription(ctx, req.URL)
 			if err != nil {
+				var srvErr *subscription.ServerError
+				if errors.As(err, &srvErr) {
+					switch srvErr.Code {
+					case subscription.CodeAccountBlocked:
+						ui.Emit("subscriptionStatusResult", map[string]interface{}{
+							"success": false,
+							"error":   "Аккаунт заблокирован администратором",
+							"status":  "blocked",
+						})
+						return
+					case subscription.CodeSubExpired:
+						ui.Emit("subscriptionStatusResult", map[string]interface{}{
+							"success": false,
+							"error":   "Срок действия подписки истёк",
+							"status":  "expired",
+						})
+						return
+					case subscription.CodeTokenRevoked:
+						ui.Emit("subscriptionStatusResult", map[string]interface{}{
+							"success": false,
+							"error":   "Токен недействителен или отозван (401)",
+							"status":  "revoked",
+						})
+						return
+					case subscription.CodeRateLimited:
+						ui.Emit("subscriptionStatusResult", map[string]interface{}{
+							"success": false,
+							"error":   "Слишком много запросов (429). Подождите немного",
+							"status":  "ratelimit",
+						})
+						return
+					default:
+						ui.Emit("subscriptionStatusResult", map[string]interface{}{
+							"success": false,
+							"error":   srvErr.Message,
+						})
+						return
+					}
+				}
 				ui.Emit("subscriptionStatusResult", map[string]interface{}{
 					"success": false,
 					"error":   err.Error(),
+				})
+				return
+			}
+
+			if info.Status == subscription.StatusBlocked || info.Status == subscription.StatusBanned {
+				ui.Emit("subscriptionStatusResult", map[string]interface{}{
+					"success": false,
+					"error":   "Аккаунт заблокирован администратором",
+					"status":  "blocked",
+				})
+				return
+			}
+			if info.Status == subscription.StatusExpired || info.IsExpired {
+				ui.Emit("subscriptionStatusResult", map[string]interface{}{
+					"success": false,
+					"error":   "Срок действия подписки истёк",
+					"status":  "expired",
 				})
 				return
 			}
@@ -857,6 +1415,7 @@ func main() {
 				"server":        info.ServerHost,
 				"username":      info.Username,
 				"expires_at":    info.ExpiresAt.Format("02.01.2006"),
+				"status":        "active",
 			})
 		}()
 	})
@@ -869,41 +1428,44 @@ func main() {
 			ui.Log(fmt.Sprintf("Синхронизация подписки с %s...", req.URL), "БОБР")
 			subClient := subscription.NewClient()
 			info, err := subClient.FetchSubscription(context.Background(), req.URL)
+			st, _ := store.GetSettings()
+			st.SubscriptionURL = req.URL
+
 			if err != nil {
 				ui.Log(fmt.Sprintf("Ошибка обновления подписки: %v", err), "ПРОТЕЧКА")
+				var srvErr *subscription.ServerError
+				if errors.As(err, &srvErr) {
+					switch srvErr.Code {
+					case subscription.CodeAccountBlocked:
+						handleSubscriptionStateChange(&st, "blocked", srvErr, nil)
+					case subscription.CodeSubExpired:
+						handleSubscriptionStateChange(&st, "expired", srvErr, nil)
+					case subscription.CodeTokenRevoked:
+						handleSubscriptionStateChange(&st, "revoked", srvErr, nil)
+					case subscription.CodeRateLimited:
+						handleSubscriptionStateChange(&st, "ratelimit", srvErr, nil)
+					default:
+						ui.Emit("toastError", map[string]interface{}{"message": srvErr.Message})
+					}
+				} else {
+					ui.Emit("toastError", map[string]interface{}{"message": err.Error()})
+				}
+				return
+			}
+
+			if info.Status == subscription.StatusBlocked || info.Status == subscription.StatusBanned {
+				handleSubscriptionStateChange(&st, "blocked", nil, info)
+				return
+			}
+			if info.Status == subscription.StatusExpired || info.IsExpired {
+				handleSubscriptionStateChange(&st, "expired", nil, info)
 				return
 			}
 
 			for _, p := range info.Profiles {
 				_ = store.SaveProfile(p)
 			}
-			settings, _ := store.GetSettings()
-			settings.SubscriptionURL = req.URL
-			settings.SubscriptionToken = info.UserID
-			settings.SubscriptionUsername = info.Username
-			settings.SubscriptionServer = info.ServerHost
-			settings.SubscriptionExpiresAt = info.ExpiresAt
-			settings.LastSyncTime = time.Now()
-			_ = store.SaveSettings(settings)
-
-			profiles, _ := store.ListProfiles()
-			ui.Emit("profilesUpdated", map[string]interface{}{
-				"profiles":        profiles,
-				"activeProfileId": settings.ActiveProfileID,
-			})
-			expStr := "Бессрочно"
-			if !info.ExpiresAt.IsZero() && info.ExpiresAt.Year() > 1 {
-				expStr = info.ExpiresAt.Format("02.01.2006")
-			}
-			ui.Emit("subscriptionUpdated", map[string]interface{}{
-				"subscription": map[string]interface{}{
-					"url":        settings.SubscriptionURL,
-					"username":   info.Username,
-					"server":     info.ServerHost,
-					"expires_at": expStr,
-					"last_sync":  time.Now().Format("15:04:05"),
-				},
-			})
+			handleSubscriptionStateChange(&st, "active", nil, info)
 			ui.Log(fmt.Sprintf("Подписка обновлена: загружено %d профилей", len(info.Profiles)), "ПЛОТИНА")
 		}
 	})
@@ -912,12 +1474,31 @@ func main() {
 	ui.On("deleteSubscription", func(payload json.RawMessage) {
 		ui.Log("Удаление подписки и связанных подключений...", "БОБР")
 		profiles, _ := store.ListProfiles()
+
+		tunnelMu.Lock()
+		running := isRunning || amneziaSup.IsRunning() || openconnectSup.IsRunning()
+		activeID := activeProfileID
+		tunnelMu.Unlock()
+
+		settings, _ := store.GetSettings()
+		shouldDisconnect := false
+
 		for _, p := range profiles {
 			if p.IsSubscription || p.SubID != "" || strings.HasSuffix(strings.ToLower(p.Name), "-sub") {
+				if running && (p.ID == activeID || p.ID == settings.ActiveProfileID) {
+					shouldDisconnect = true
+				}
 				_ = store.DeleteProfile(p.ID)
 			}
 		}
-		settings, _ := store.GetSettings()
+
+		if shouldDisconnect {
+			ui.Log("Активное подключение принадлежало удалённой подписке — принудительный разрыв VPN...", "БОБР")
+			if stopCurrentTunnel != nil {
+				stopCurrentTunnel()
+			}
+		}
+
 		settings.SubscriptionURL = ""
 		settings.SubscriptionToken = ""
 		settings.SubscriptionUsername = ""
@@ -926,9 +1507,10 @@ func main() {
 		_ = store.SaveSettings(settings)
 
 		updatedProfiles, _ := store.ListProfiles()
+		updatedSettings, _ := store.GetSettings()
 		ui.Emit("profilesUpdated", map[string]interface{}{
 			"profiles":        updatedProfiles,
-			"activeProfileId": settings.ActiveProfileID,
+			"activeProfileId": updatedSettings.ActiveProfileID,
 		})
 		ui.Emit("subscriptionUpdated", map[string]interface{}{
 			"subscription": map[string]interface{}{
@@ -984,6 +1566,15 @@ func main() {
 				"activeProfileId": settings.ActiveProfileID,
 			})
 			ui.Log(fmt.Sprintf("Профиль '%s' сохранён", p.Name), "БОБР")
+
+			tunnelMu.Lock()
+			isThisActive := isRunning && activeProfileID == p.ID
+			tunnelMu.Unlock()
+
+			if isThisActive {
+				ui.Log(fmt.Sprintf("Профиль '%s' активен: перезапуск для применения новых параметров...", p.Name), "БОБР")
+				startProfileTunnel(p)
+			}
 		}
 	})
 
@@ -1039,9 +1630,10 @@ func main() {
 		targetURL := req.URL
 		if targetURL == "" {
 			settings, _ := store.GetSettings()
-			targetURL = "https://persona.netphoenix.ru"
 			if settings.SubscriptionURL != "" {
 				targetURL = subscription.ExtractCabinetURL(nil, settings.SubscriptionURL)
+			} else {
+				targetURL = "https://example.com/cloud"
 			}
 		}
 		ui.Log(fmt.Sprintf("Открытие ссылки в браузере: %s", targetURL), "БОБР")
@@ -1068,6 +1660,15 @@ func main() {
 	})
 
 	ui.On("hideToTray", func(payload json.RawMessage) {
+		settings, _ := store.GetSettings()
+		if !settings.SilentTray && systemTray != nil {
+			systemTray.ShowActionNotification(
+				"БобрДобр VPN",
+				"Приложение свернуто в системный трей и продолжает работать в фоновом режиме.",
+				"🔇 Больше не показывать",
+				"bobrdobr://action/silent-tray",
+			)
+		}
 		ui.Hide()
 	})
 
@@ -1087,6 +1688,14 @@ func main() {
 			return false // allow window to close and app to terminate
 		}
 		// Default: hide to system tray, keeping VPN connection active
+		if !settings.SilentTray && systemTray != nil {
+			systemTray.ShowActionNotification(
+				"БобрДобр VPN",
+				"Приложение свернуто в системный трей и продолжает работать в фоновом режиме.",
+				"🔇 Больше не показывать",
+				"bobrdobr://action/silent-tray",
+			)
+		}
 		return true // intercepted, hide to tray
 	})
 
@@ -1101,6 +1710,14 @@ func main() {
 			_ = instance.Release()
 			os.Exit(0)
 		} else {
+			if !settings.SilentTray && systemTray != nil {
+				systemTray.ShowActionNotification(
+					"БобрДобр VPN",
+					"Приложение свернуто в системный трей и продолжает работать в фоновом режиме.",
+					"🔇 Больше не показывать",
+					"bobrdobr://action/silent-tray",
+				)
+			}
 			ui.Hide()
 		}
 	})
@@ -1135,11 +1752,16 @@ func main() {
 			cur, _ := store.GetSettings()
 			cur.AutoStart = newSettings.AutoStart
 			cur.CloseAction = newSettings.CloseAction
+			cur.SilentTray = newSettings.SilentTray
 			cur.AutoConnect = newSettings.AutoConnect
 			cur.Notifications = newSettings.Notifications
 			cur.CheckUpdates = newSettings.CheckUpdates
 			_ = store.SaveSettings(cur)
-			_ = gui.SetAutoStart(cur.AutoStart)
+			if errAutoStart := gui.SetAutoStart(cur.AutoStart); errAutoStart != nil {
+				log.Printf("[БОБР] Ошибка установки автозапуска (%v): %v", cur.AutoStart, errAutoStart)
+			} else {
+				log.Printf("[БОБР] Автозапуск Windows синхронизирован (включен: %v)", cur.AutoStart)
+			}
 			ui.Log("Настройки программы успешно обновлены", "БОБР")
 			ui.Emit("settingsLoaded", cur)
 		}
@@ -1198,7 +1820,7 @@ func main() {
 		}
 	})
 
-	currentAppVersion := "1.2.2"
+	currentAppVersion := "1.3.0"
 
 	ui.On("checkUpdate", func(payload json.RawMessage) {
 		ui.Log("Проверка обновлений на сервере...", "БОБР")

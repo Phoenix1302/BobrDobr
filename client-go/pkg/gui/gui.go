@@ -34,6 +34,7 @@ var (
 	procLoadImageW          = moduser32.NewProc("LoadImageW")
 	procShowWindow          = moduser32.NewProc("ShowWindow")
 	procSetForegroundWindow = moduser32.NewProc("SetForegroundWindow")
+	procBringWindowToTop    = moduser32.NewProc("BringWindowToTop")
 	procIsWindowVisible     = moduser32.NewProc("IsWindowVisible")
 	procGetModuleHandleW    = modkernel32.NewProc("GetModuleHandleW")
 	procSetWindowSubclass   = modcomctl32.NewProc("SetWindowSubclass")
@@ -47,6 +48,7 @@ const (
 	ICON_BIG      = 1
 	SW_HIDE       = 0
 	SW_SHOWNORMAL = 1
+	SW_SHOW       = 5
 	SW_RESTORE    = 9
 )
 
@@ -360,7 +362,9 @@ func (g *GUI) Show() {
 	if w != nil {
 		hwnd := uintptr(w.Window())
 		if hwnd != 0 {
+			procShowWindow.Call(hwnd, SW_SHOW)
 			procShowWindow.Call(hwnd, SW_RESTORE)
+			procBringWindowToTop.Call(hwnd)
 			procSetForegroundWindow.Call(hwnd)
 		}
 	}
@@ -395,7 +399,9 @@ func (g *GUI) ToggleVisibility() {
 			if visible != 0 {
 				procShowWindow.Call(hwnd, SW_HIDE)
 			} else {
+				procShowWindow.Call(hwnd, SW_SHOW)
 				procShowWindow.Call(hwnd, SW_RESTORE)
+				procBringWindowToTop.Call(hwnd)
 				procSetForegroundWindow.Call(hwnd)
 			}
 		}

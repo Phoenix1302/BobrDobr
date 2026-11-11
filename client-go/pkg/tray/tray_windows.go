@@ -73,6 +73,9 @@ const (
 	NIF_TIP     = 0x00000004
 	NIF_INFO    = 0x00000010
 
+	NIIF_NONE = 0x00000000
+	NIIF_INFO = 0x00000001
+
 	WM_NULL         = 0x0000
 	WM_USER         = 0x0400
 	WM_TRAYICON     = WM_USER + 101
@@ -80,6 +83,8 @@ const (
 	WM_LBUTTONUP    = 0x0202
 	WM_LBUTTONDBLCLK = 0x0203
 	WM_RBUTTONUP    = 0x0205
+
+	NIN_BALLOONUSERCLICK = 0x0405
 
 	IMAGE_ICON     = 1
 	LR_LOADFROMFILE = 0x00000010
@@ -170,6 +175,12 @@ func wndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) uintptr {
 		case WM_RBUTTONUP:
 			if activeTray != nil {
 				activeTray.showContextMenu()
+			}
+			return 0
+
+		case NIN_BALLOONUSERCLICK:
+			if activeTray != nil && activeTray.onToggle != nil {
+				go activeTray.onToggle()
 			}
 			return 0
 		}
@@ -333,87 +344,9 @@ func New(onToggle, onDisconnect, onSettings, onExit func()) (*Tray, error) {
 	return t, nil
 }
 
-// showContextMenu displays the Win32 popup menu on right click
+// showContextMenu displays the modern popup menu on right click
 func (t *Tray) showContextMenu() {
-	t.mu.Lock()
-	conn := t.isConnected
-	prof := t.activeProfile
-	t.mu.Unlock()
-
-	hMenu, _, _ := procCreatePopupMenu.Call()
-	if hMenu == 0 {
-		return
-	}
-	defer procDestroyMenu.Call(hMenu)
-
-	headerText, _ := windows.UTF16PtrFromString("●  БобрДобр VPN v1.2.2")
-	procAppendMenuW.Call(hMenu, MF_STRING|MF_DISABLED, ID_MENU_HEADER, uintptr(unsafe.Pointer(headerText)))
-	procAppendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
-
-	toggleText, _ := windows.UTF16PtrFromString("Показать / Скрыть главное окно")
-	procAppendMenuW.Call(hMenu, MF_STRING, ID_MENU_TOGGLE, uintptr(unsafe.Pointer(toggleText)))
-	procAppendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
-
-	var statusTextStr string
-	if conn {
-		statusTextStr = fmt.Sprintf("●  Плотина построена (%s)", prof)
-	} else {
-		statusTextStr = "○  Плотина не построена"
-	}
-	statusText, _ := windows.UTF16PtrFromString(statusTextStr)
-	procAppendMenuW.Call(hMenu, MF_STRING|MF_DISABLED, ID_MENU_STATUS, uintptr(unsafe.Pointer(statusText)))
-
-	disconnectFlags := uintptr(MF_STRING)
-	if !conn {
-		disconnectFlags |= MF_GRAYED | MF_DISABLED
-	}
-	disconnectText, _ := windows.UTF16PtrFromString("Отключить VPN")
-	procAppendMenuW.Call(hMenu, disconnectFlags, ID_MENU_DISCONNECT, uintptr(unsafe.Pointer(disconnectText)))
-
-	procAppendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
-
-	settingsText, _ := windows.UTF16PtrFromString("Настройки программы...")
-	procAppendMenuW.Call(hMenu, MF_STRING, ID_MENU_SETTINGS, uintptr(unsafe.Pointer(settingsText)))
-
-	procAppendMenuW.Call(hMenu, MF_SEPARATOR, 0, 0)
-
-	exitText, _ := windows.UTF16PtrFromString("Выход из программы")
-	procAppendMenuW.Call(hMenu, MF_STRING, ID_MENU_EXIT, uintptr(unsafe.Pointer(exitText)))
-
-	var pt POINT
-	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-
-	procSetForegroundWindow.Call(uintptr(t.hwnd))
-
-	cmd, _, _ := procTrackPopupMenuEx.Call(
-		hMenu,
-		TPM_RETURNCMD|TPM_RIGHTBUTTON,
-		uintptr(pt.X),
-		uintptr(pt.Y),
-		uintptr(t.hwnd),
-		0,
-	)
-
-	procPostMessageW.Call(uintptr(t.hwnd), WM_NULL, 0, 0)
-
-	switch cmd {
-	case ID_MENU_TOGGLE:
-		if t.onToggle != nil {
-			go t.onToggle()
-		}
-	case ID_MENU_DISCONNECT:
-		if t.onDisconnect != nil {
-			go t.onDisconnect()
-		}
-	case ID_MENU_SETTINGS:
-		if t.onSettings != nil {
-			go t.onSettings()
-		}
-	case ID_MENU_EXIT:
-		if t.onExit != nil {
-			go t.onExit()
-		}
-	}
+	t.showModernMenu()
 }
 
 // SetStatus updates connection status in tooltip and context menu
@@ -448,6 +381,45 @@ func (t *Tray) SetTooltip(tip string) {
 	t.nid.uFlags = NIF_TIP
 
 	procShell_NotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
+}
+
+// ShowNotification displays a balloon / system notification from the tray icon
+func (t *Tray) ShowNotification(title, message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.destroyed || t.hwnd == 0 {
+		return
+	}
+
+	t.nid.uFlags = NIF_INFO | NIF_MESSAGE
+	t.nid.uCallbackMessage = WM_TRAYICON
+	t.nid.dwInfoFlags = NIIF_INFO
+
+	for i := range t.nid.szInfoTitle {
+		t.nid.szInfoTitle[i] = 0
+	}
+	titleChars, _ := windows.UTF16FromString(title)
+	copy(t.nid.szInfoTitle[:], titleChars)
+
+	for i := range t.nid.szInfo {
+		t.nid.szInfo[i] = 0
+	}
+	msgChars, _ := windows.UTF16FromString(message)
+	copy(t.nid.szInfo[:], msgChars)
+
+	procShell_NotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&t.nid)))
+}
+
+// ShowActionNotification displays an interactive Windows toast notification with an action button,
+// or falls back to a standard balloon notification if buttonText is empty or on failure.
+func (t *Tray) ShowActionNotification(title, message, buttonText, protocolArg string) {
+	if buttonText != "" {
+		if err := ShowToastWithAction("BobrDobr.VPN.Client", title, message, buttonText, protocolArg); err == nil {
+			return
+		}
+	}
+	t.ShowNotification(title, message)
 }
 
 // Destroy cleans up and removes tray icon

@@ -3,9 +3,11 @@ package subscription
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -264,8 +266,8 @@ func TestDynamicCabinetURLDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed decode: %v", err)
 	}
-	if info2.CabinetURL != "https://my-custom-host.com:8443" {
-		t.Fatalf("expected 'https://my-custom-host.com:8443', got '%s'", info2.CabinetURL)
+	if info2.CabinetURL != "https://my-custom-host.com:8443/cloud" {
+		t.Fatalf("expected 'https://my-custom-host.com:8443/cloud', got '%s'", info2.CabinetURL)
 	}
 
 	// Case 3: Fallback default
@@ -273,8 +275,8 @@ func TestDynamicCabinetURLDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed decode: %v", err)
 	}
-	if info3.CabinetURL != "https://persona.netphoenix.ru" {
-		t.Fatalf("expected fallback default 'https://persona.netphoenix.ru', got '%s'", info3.CabinetURL)
+	if info3.CabinetURL != "https://example.com/cloud" {
+		t.Fatalf("expected fallback default 'https://example.com/cloud', got '%s'", info3.CabinetURL)
 	}
 }
 
@@ -362,13 +364,21 @@ func TestHTTPClientErrorCodes(t *testing.T) {
 	// 401 Unauthorized
 	s401 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": "Invalid or revoked token"}`))
 	}))
 	defer s401.Close()
 
 	client := NewClient()
 	_, err := client.FetchSubscription(context.Background(), s401.URL)
-	if err != ErrUnauthorized {
-		t.Fatalf("expected ErrUnauthorized, got: %v", err)
+	if !IsRevoked(err) {
+		t.Fatalf("expected IsRevoked(err) == true, got: %v", err)
+	}
+	var srvErr *ServerError
+	if !errors.As(err, &srvErr) || srvErr.Code != CodeTokenRevoked {
+		t.Fatalf("expected CodeTokenRevoked, got: %+v", srvErr)
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected errors.Is(err, ErrUnauthorized) == true")
 	}
 
 	// 404 Not Found
@@ -385,13 +395,306 @@ func TestHTTPClientErrorCodes(t *testing.T) {
 	// 403 Forbidden (Blocked)
 	s403 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error": "user blocked by admin"}`))
+		_, _ = w.Write([]byte(`{"error": "Account is blocked by administrator"}`))
 	}))
 	defer s403.Close()
 
 	_, err = client.FetchSubscription(context.Background(), s403.URL)
+	if !IsBlocked(err) {
+		t.Fatalf("expected IsBlocked(err) == true, got %v", err)
+	}
+	if !errors.As(err, &srvErr) || srvErr.Code != CodeAccountBlocked {
+		t.Fatalf("expected CodeAccountBlocked, got: %+v", srvErr)
+	}
+}
+
+func TestServerError403AccountBlocked(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error": "Account is blocked by administrator"}`))
+	}))
+	defer s.Close()
+
+	client := NewClient()
+	info, err := client.FetchSubscription(context.Background(), s.URL+"/api/v1/sub/mytoken")
+	if info != nil {
+		t.Fatalf("expected nil info on blocked error, got %+v", info)
+	}
 	if err == nil {
-		t.Fatalf("expected error for 403, got nil")
+		t.Fatalf("expected error on blocked account")
+	}
+
+	if !IsBlocked(err) {
+		t.Fatalf("expected IsBlocked(err) == true")
+	}
+	if IsExpired(err) || IsRevoked(err) || IsRateLimited(err) {
+		t.Fatalf("expected only IsBlocked to be true")
+	}
+
+	var srvErr *ServerError
+	if !errors.As(err, &srvErr) {
+		t.Fatalf("expected error to match *ServerError via errors.As")
+	}
+
+	if srvErr.StatusCode != 403 {
+		t.Errorf("expected StatusCode 403, got %d", srvErr.StatusCode)
+	}
+	if srvErr.Code != CodeAccountBlocked {
+		t.Errorf("expected Code %s, got %s", CodeAccountBlocked, srvErr.Code)
+	}
+	expectedMsg := "Ваш аккаунт заблокирован администратором. Обратитесь в поддержку."
+	if srvErr.Message != expectedMsg {
+		t.Errorf("expected Message %q, got %q", expectedMsg, srvErr.Message)
+	}
+	if !strings.HasSuffix(srvErr.CabinetURL, "/cloud") {
+		t.Errorf("expected CabinetURL to end with /cloud, got %q", srvErr.CabinetURL)
+	}
+	if !strings.Contains(srvErr.RawBody, "Account is blocked by administrator") {
+		t.Errorf("expected RawBody to contain response body, got %q", srvErr.RawBody)
+	}
+}
+
+func TestServerError403SubscriptionExpired(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error": "Subscription expired. Please renew access."}`))
+	}))
+	defer s.Close()
+
+	client := NewClient()
+	info, err := client.FetchSubscription(context.Background(), s.URL+"/sub/mytoken")
+	if info != nil {
+		t.Fatalf("expected nil info on expired error, got %+v", info)
+	}
+	if err == nil {
+		t.Fatalf("expected error on expired subscription")
+	}
+
+	if !IsExpired(err) {
+		t.Fatalf("expected IsExpired(err) == true")
+	}
+	if IsBlocked(err) || IsRevoked(err) || IsRateLimited(err) {
+		t.Fatalf("expected only IsExpired to be true")
+	}
+
+	var srvErr *ServerError
+	if !errors.As(err, &srvErr) {
+		t.Fatalf("expected error to match *ServerError via errors.As")
+	}
+
+	if srvErr.StatusCode != 403 {
+		t.Errorf("expected StatusCode 403, got %d", srvErr.StatusCode)
+	}
+	if srvErr.Code != CodeSubExpired {
+		t.Errorf("expected Code %s, got %s", CodeSubExpired, srvErr.Code)
+	}
+	expectedMsg := "Срок действия подписки истек. Продлите доступ в личном кабинете веб-панели."
+	if srvErr.Message != expectedMsg {
+		t.Errorf("expected Message %q, got %q", expectedMsg, srvErr.Message)
+	}
+	if !strings.HasSuffix(srvErr.CabinetURL, "/cloud") {
+		t.Errorf("expected CabinetURL to end with /cloud, got %q", srvErr.CabinetURL)
+	}
+	if !strings.Contains(srvErr.RawBody, "Subscription expired") {
+		t.Errorf("expected RawBody to contain response body, got %q", srvErr.RawBody)
+	}
+}
+
+func TestServerError401TokenRevoked(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": "Invalid or revoked token"}`))
+	}))
+	defer s.Close()
+
+	client := NewClient()
+	info, err := client.FetchSubscription(context.Background(), s.URL+"/api/v1/sub/revokedtoken")
+	if info != nil {
+		t.Fatalf("expected nil info on revoked error, got %+v", info)
+	}
+	if err == nil {
+		t.Fatalf("expected error on revoked token")
+	}
+
+	if !IsRevoked(err) {
+		t.Fatalf("expected IsRevoked(err) == true")
+	}
+	if IsBlocked(err) || IsExpired(err) || IsRateLimited(err) {
+		t.Fatalf("expected only IsRevoked to be true")
+	}
+
+	var srvErr *ServerError
+	if !errors.As(err, &srvErr) {
+		t.Fatalf("expected error to match *ServerError via errors.As")
+	}
+
+	if srvErr.StatusCode != 401 {
+		t.Errorf("expected StatusCode 401, got %d", srvErr.StatusCode)
+	}
+	if srvErr.Code != CodeTokenRevoked {
+		t.Errorf("expected Code %s, got %s", CodeTokenRevoked, srvErr.Code)
+	}
+	expectedMsg := "Токен подписки недействителен или был удален. Скопируйте новую ссылку в веб-панели."
+	if srvErr.Message != expectedMsg {
+		t.Errorf("expected Message %q, got %q", expectedMsg, srvErr.Message)
+	}
+	if !strings.HasSuffix(srvErr.CabinetURL, "/cloud") {
+		t.Errorf("expected CabinetURL to end with /cloud, got %q", srvErr.CabinetURL)
+	}
+}
+
+func TestServerError429RateLimited(t *testing.T) {
+	var attempts int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error": "Rate limit exceeded. Try again later."}`))
+	}))
+	defer s.Close()
+
+	// Fast retry delays to avoid waiting 5s + 15s + 60s in tests
+	client := NewClient(
+		WithRetryDelays(1*time.Millisecond, 2*time.Millisecond),
+	)
+
+	info, err := client.FetchSubscription(context.Background(), s.URL+"/sub/ratelimited")
+	if info != nil {
+		t.Fatalf("expected nil info on rate limit error, got %+v", info)
+	}
+	if err == nil {
+		t.Fatalf("expected error on rate limit")
+	}
+
+	if !IsRateLimited(err) {
+		t.Fatalf("expected IsRateLimited(err) == true")
+	}
+	if IsBlocked(err) || IsExpired(err) || IsRevoked(err) {
+		t.Fatalf("expected only IsRateLimited to be true")
+	}
+
+	var srvErr *ServerError
+	if !errors.As(err, &srvErr) {
+		t.Fatalf("expected error to match *ServerError via errors.As")
+	}
+
+	if srvErr.StatusCode != 429 {
+		t.Errorf("expected StatusCode 429, got %d", srvErr.StatusCode)
+	}
+	if srvErr.Code != CodeRateLimited {
+		t.Errorf("expected Code %s, got %s", CodeRateLimited, srvErr.Code)
+	}
+	if !strings.Contains(srvErr.Message, "Rate limit exceeded") {
+		t.Errorf("expected rate limit message, got %q", srvErr.Message)
+	}
+	if !strings.HasSuffix(srvErr.CabinetURL, "/cloud") {
+		t.Errorf("expected CabinetURL to end with /cloud, got %q", srvErr.CabinetURL)
+	}
+	// Verify that initial request + 2 retries were performed (3 attempts total)
+	if atomic.LoadInt32(&attempts) != 3 {
+		t.Errorf("expected 3 attempts, got %d", atomic.LoadInt32(&attempts))
+	}
+}
+
+func Test200OKWithIsFrozen(t *testing.T) {
+	// Case 1: is_frozen == 2 in top-level JSON body -> StatusBlocked
+	jsonBlocked := `{
+		"status": "active",
+		"is_frozen": 2,
+		"connections": []
+	}`
+	info1, err := DecodeSubscriptionPayload([]byte(jsonBlocked), "https://persona.netphoenix.ru/sub/tok", "")
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if info1.Status != StatusBlocked {
+		t.Errorf("expected status %s, got %s", StatusBlocked, info1.Status)
+	}
+	if !info1.IsFrozen {
+		t.Errorf("expected IsFrozen == true")
+	}
+	if info1.IsActive {
+		t.Errorf("expected IsActive == false")
+	}
+
+	// Case 2: is_frozen == 1 in top-level JSON body -> StatusExpired, IsExpired = true, IsFrozen = true
+	jsonExpired := `{
+		"status": "active",
+		"is_frozen": 1,
+		"connections": []
+	}`
+	info2, err := DecodeSubscriptionPayload([]byte(jsonExpired), "https://persona.netphoenix.ru/sub/tok", "")
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if info2.Status != StatusExpired {
+		t.Errorf("expected status %s, got %s", StatusExpired, info2.Status)
+	}
+	if !info2.IsExpired {
+		t.Errorf("expected IsExpired == true")
+	}
+	if !info2.IsFrozen {
+		t.Errorf("expected IsFrozen == true")
+	}
+	if info2.IsActive {
+		t.Errorf("expected IsActive == false")
+	}
+
+	// Case 3: is_frozen == 2 in user object -> StatusBlocked
+	jsonUserBlocked := `{
+		"status": "active",
+		"user": {
+			"username": "BlockedUser",
+			"is_frozen": 2
+		},
+		"connections": []
+	}`
+	info3, err := DecodeSubscriptionPayload([]byte(jsonUserBlocked), "https://persona.netphoenix.ru/sub/tok", "")
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if info3.Status != StatusBlocked {
+		t.Errorf("expected status %s, got %s", StatusBlocked, info3.Status)
+	}
+	if !info3.IsFrozen {
+		t.Errorf("expected IsFrozen == true")
+	}
+
+	// Case 4: is_frozen == 1 in user object -> StatusExpired
+	jsonUserExpired := `{
+		"status": "active",
+		"user": {
+			"username": "ExpiredUser",
+			"is_frozen": 1
+		},
+		"connections": []
+	}`
+	info4, err := DecodeSubscriptionPayload([]byte(jsonUserExpired), "https://persona.netphoenix.ru/sub/tok", "")
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if info4.Status != StatusExpired {
+		t.Errorf("expected status %s, got %s", StatusExpired, info4.Status)
+	}
+	if !info4.IsExpired || !info4.IsFrozen {
+		t.Errorf("expected IsExpired and IsFrozen to be true")
+	}
+
+	// Case 5: String representation "is_frozen": "2"
+	jsonStringBlocked := `{
+		"status": "active",
+		"is_frozen": "2",
+		"connections": []
+	}`
+	info5, err := DecodeSubscriptionPayload([]byte(jsonStringBlocked), "https://persona.netphoenix.ru/sub/tok", "")
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if info5.Status != StatusBlocked {
+		t.Errorf("expected status %s, got %s", StatusBlocked, info5.Status)
 	}
 }
 
