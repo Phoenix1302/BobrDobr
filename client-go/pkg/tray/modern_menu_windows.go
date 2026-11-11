@@ -34,6 +34,7 @@ var (
 	procReleaseCapture         = moduser32.NewProc("ReleaseCapture")
 	procShowWindow             = moduser32.NewProc("ShowWindow")
 	procGetWindow              = moduser32.NewProc("GetWindow")
+	procKeybdEvent             = moduser32.NewProc("keybd_event")
 	procWindowFromPoint        = moduser32.NewProc("WindowFromPoint")
 	procGetAncestor            = moduser32.NewProc("GetAncestor")
 	procGetClassNameW          = moduser32.NewProc("GetClassNameW")
@@ -85,7 +86,8 @@ const (
 	WM_CANCELMODE  = 0x001F
 	WM_DESTROY     = 0x0002
 
-	VK_ESCAPE = 0x1B
+	VK_ESCAPE       = 0x1B
+	KEYEVENTF_KEYUP = 0x0002
 
 	WA_INACTIVE = 0
 
@@ -190,25 +192,50 @@ func dismissOverflowWindow(h windows.HWND) {
 	if h == 0 {
 		return
 	}
-	// Dismiss gracefully via standard Win32 cancel & Escape commands.
-	// This lets Windows Explorer / XAML island smoothly close the flyout
-	// and update the chevron ToggleButton state to IsChecked=false,
-	// so subsequent clicks open on the very first try without requiring two clicks!
+
+	// 1. Send real Escape keystroke to active overflow window.
+	// In Windows 11, XAML Island (TopLevelWindowForOverflowXamlIsland) handles real
+	// keyboard events to gracefully dismiss the flyout, play its smooth closing animation,
+	// and reset the chevron ToggleButton state to IsChecked=false.
+	procSetForegroundWindow.Call(uintptr(h))
+	if procKeybdEvent.Find() == nil {
+		procKeybdEvent.Call(uintptr(VK_ESCAPE), 0, 0, 0)
+		procKeybdEvent.Call(uintptr(VK_ESCAPE), 0, KEYEVENTF_KEYUP, 0)
+	}
+
+	// 2. Post cancel messages (for Windows 10 ToolbarWindow32 & classic Win32 message pump)
 	procPostMessageW.Call(uintptr(h), WM_CANCELMODE, 0, 0)
-	procPostMessageW.Call(uintptr(h), WM_KEYDOWN, VK_ESCAPE, 0)
-	procPostMessageW.Call(uintptr(h), WM_KEYUP, VK_ESCAPE, 0xC0000001)
+	procPostMessageW.Call(uintptr(h), WM_KEYDOWN, uintptr(VK_ESCAPE), 0)
+	procPostMessageW.Call(uintptr(h), WM_KEYUP, uintptr(VK_ESCAPE), 0xC0000001)
 
 	hChild, _, _ := procGetWindow.Call(uintptr(h), GW_CHILD)
 	if hChild != 0 {
 		procPostMessageW.Call(hChild, WM_CANCELMODE, 0, 0)
-		procPostMessageW.Call(hChild, WM_KEYDOWN, VK_ESCAPE, 0)
-		procPostMessageW.Call(hChild, WM_KEYUP, VK_ESCAPE, 0xC0000001)
+		procPostMessageW.Call(hChild, WM_KEYDOWN, uintptr(VK_ESCAPE), 0)
+		procPostMessageW.Call(hChild, WM_KEYUP, uintptr(VK_ESCAPE), 0xC0000001)
 	}
+
+	// 3. Safety net: if still visible after 250ms, force hide via SW_HIDE
+	// so the tray NEVER remains frozen or stuck on screen under any circumstance!
+	go func(targetH windows.HWND) {
+		time.Sleep(250 * time.Millisecond)
+		vis, _, _ := procIsWindowVisible.Call(uintptr(targetH))
+		if vis != 0 {
+			procShowWindow.Call(uintptr(targetH), SW_HIDE)
+		}
+	}(h)
 }
 
 func (m *modernMenu) dismiss(dismissOverflow bool) {
 	m.dismissOnce.Do(func() {
 		m.stopKeepAliveRoutine()
+
+		if m.hwnd != 0 {
+			h := m.hwnd
+			m.hwnd = 0
+			procReleaseCapture.Call()
+			procDestroyWindow.Call(uintptr(h))
+		}
 
 		if dismissOverflow && m.fromOverflow && m.hOverflow != 0 {
 			dismissOverflowWindow(m.hOverflow)
@@ -219,13 +246,6 @@ func (m *modernMenu) dismiss(dismissOverflow bool) {
 			activeModernMenu = nil
 		}
 		activeModernMenuMu.Unlock()
-
-		if m.hwnd != 0 {
-			h := m.hwnd
-			m.hwnd = 0
-			procReleaseCapture.Call()
-			procDestroyWindow.Call(uintptr(h))
-		}
 	})
 }
 
@@ -650,11 +670,14 @@ func modernMenuWndProc(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) ui
 
 			// Release capture first so system can route focus/click naturally
 			procReleaseCapture.Call()
-			if dismissOver && hClicked != 0 && windows.HWND(hClicked) != m.hwnd && windows.HWND(hClicked) != m.hOverflow {
-				procSetForegroundWindow.Call(hClicked)
-			}
-
 			m.dismiss(dismissOver)
+
+			if dismissOver && hClicked != 0 && windows.HWND(hClicked) != m.hwnd && windows.HWND(hClicked) != m.hOverflow {
+				go func(target windows.HWND) {
+					time.Sleep(40 * time.Millisecond)
+					procSetForegroundWindow.Call(uintptr(target))
+				}(windows.HWND(hClicked))
+			}
 			return 0
 		}
 		return 0
