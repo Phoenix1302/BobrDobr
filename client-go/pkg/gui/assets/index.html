@@ -760,7 +760,7 @@
                   border-color 0.2s var(--ease-smooth),
                   background 0.2s var(--ease-smooth);
       position: relative;
-      cursor: pointer;
+      cursor: default;
       --beam-color: #f59e0b;
       --beam-tail: rgba(245, 158, 11, 0.2);
       --beam-spark: #fde68a;
@@ -3640,9 +3640,20 @@
                 <div style="font-size:11px; color:var(--text-muted); margin-top:1px;">Разработчик БобрДобр VPN</div>
               </div>
             </div>
-            <button class="btn btn-xs" onclick="openAuthorProfile()" style="display:inline-flex; align-items:center; gap:5px;" title="Открыть профиль автора Phoenix1302 на GitHub">
-              <span>GitHub ↗</span>
-            </button>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="btn btn-xs" onclick="openProjectRepo()" style="display:inline-flex; align-items:center; gap:5px;" title="Открыть репозиторий проекта БобрДобр на GitHub">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                  <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.784 1.401 8.166-7.335-3.856-7.335 3.856 1.401-8.166-5.934-5.784 8.2-1.192zm0 5.702l-2.228 4.516-4.982.724 3.606 3.514-.851 4.962 4.455-2.342 4.455 2.342-.851-4.962 3.606-3.514-4.982-.724z"/>
+                </svg>
+                <span>Исходный код ↗</span>
+              </button>
+              <button class="btn btn-xs" onclick="openAuthorProfile()" style="display:inline-flex; align-items:center; gap:5px;" title="Открыть профиль автора Phoenix1302 на GitHub">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+                <span>Профиль автора ↗</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3689,6 +3700,7 @@
     let appState = {
       status: "disconnected",
       activeProfileId: "",
+      connectedProfileId: "",
       profiles: [],
       subscription: null,
       activeProtocol: "amneziawg",
@@ -5284,9 +5296,9 @@
       let matchedCount = 0;
 
       profiles.forEach(p => {
-        const isActive = p.id === activeId;
-        const isConnected = isActive && appState.status === "connected";
-        const isConnecting = isActive && appState.status === "connecting";
+        const connectedId = appState.connectedProfileId || (appState.status === "connected" ? (appState.activeProfileId || activeId) : "");
+        const isConnected = (p.id === connectedId) && (appState.status === "connected");
+        const isConnecting = (p.id === (appState.activeProfileId || activeId)) && (appState.status === "connecting");
 
         const isSub = isSubscriptionProfile(p);
         const subStatus = isSub ? ((appState.subscription && appState.subscription.status) || (appState.settings && appState.settings.subscription_status) || "") : "";
@@ -5409,11 +5421,7 @@
           </div>
         `;
 
-        card.onclick = () => {
-          triggerCardRibbon(card, isConnected ? "emerald" : "amber");
-          callGo("selectProfile", { id: p.id });
-        };
-
+        // Note: card body is non-clickable; connections & actions happen via explicit buttons
         container.appendChild(card);
       });
 
@@ -5430,7 +5438,8 @@
 
     // Toggle Connect/Disconnect Button Handler
     function handleToggleClick(id) {
-      if (appState.status === "connected" && appState.activeProfileId === id) {
+      const isCurrentConnected = (appState.status === "connected") && ((appState.connectedProfileId && appState.connectedProfileId === id) || (appState.activeProfileId === id));
+      if (isCurrentConnected) {
         clearTimeout(connectingFinishTimeout);
         updateDockState("connecting", "Остановка гидротурбины...", "");
         const curProf = (appState.profiles || []).find(x => x.id === id);
@@ -5462,20 +5471,24 @@
         }
       }
 
+      const isSwitching = (appState.status === "connected" || appState.status === "connecting");
       connectingStartTime = performance.now();
       clearTimeout(connectingFinishTimeout);
       appState.status = "connecting";
       appState.activeProfileId = id;
+      appState.connectedProfileId = "";
       if (p && p.protocol) {
         appState.activeProtocol = p.protocol;
         appState.activeProto = p.protocol;
       }
-      updateDockState("connecting", `Подключение к ${p ? p.name : 'серверу'}...`, p ? p.name : "", appState.activeAdapter, appState.activeProtocol);
+      const targetName = p ? p.name : "серверу";
+      const actionMsg = isSwitching ? `Переключение на ${targetName}...` : `Подключение к ${targetName}...`;
+      updateDockState("connecting", actionMsg, p ? p.name : "", appState.activeAdapter, appState.activeProtocol);
       renderProfiles(appState.profiles, appState.activeProfileId);
 
-      const connName = p ? p.name : "серверу";
-      const connHtml = `<span style="color:#38bdf8; font-weight:600;">Подключение:</span> <span style="color:#f8fafc;">${escapeHtml(connName)}...</span>`;
-      showToast(`Подключение к ${connName}...`, "info", 3200, null, null, "tunnel", connHtml, "🔄");
+      const connPrefix = isSwitching ? "Переключение:" : "Подключение:";
+      const connHtml = `<span style="color:#38bdf8; font-weight:600;">${connPrefix}</span> <span style="color:#f8fafc;">${escapeHtml(targetName)}...</span>`;
+      showToast(actionMsg, "info", 3200, null, null, "tunnel", connHtml, "🔄");
 
       callGo("connectProfile", { id: id });
     }
@@ -6119,14 +6132,17 @@
         case "profilesUpdated":
           appState.profiles = data.profiles || [];
           if (data.activeProfileId !== undefined) {
-            appState.activeProfileId = data.activeProfileId;
+            if (appState.status !== "connected" && appState.status !== "connecting") {
+              appState.activeProfileId = data.activeProfileId;
+            }
           }
-          const curProf = appState.profiles.find(p => p.id === appState.activeProfileId);
+          const curProfId = appState.connectedProfileId || appState.activeProfileId;
+          const curProf = appState.profiles.find(p => p.id === curProfId);
           if (curProf && curProf.protocol) {
             appState.activeProtocol = curProf.protocol;
             appState.activeProto = curProf.protocol;
           }
-          renderProfiles(appState.profiles, appState.activeProfileId);
+          renderProfiles(appState.profiles, curProfId);
           if (appState.status === "connected" || appState.status === "connecting") {
             if (!curProf) {
               updateDockState("disconnected", "Отключено", "", "", "");
@@ -6142,7 +6158,17 @@
           if (data.adapter) {
             appState.activeAdapter = data.adapter;
           }
-          const activeProf = appState.profiles.find(p => p.id === appState.activeProfileId);
+          if (data.profileId) {
+            appState.activeProfileId = data.profileId;
+          }
+          if (appState.status === "connected") {
+            appState.connectedProfileId = data.profileId || appState.activeProfileId;
+          } else if (appState.status === "disconnected") {
+            appState.connectedProfileId = "";
+          }
+
+          const activeProfId = appState.connectedProfileId || appState.activeProfileId;
+          const activeProf = appState.profiles.find(p => p.id === activeProfId);
           if (data.protocol) {
             appState.activeProtocol = data.protocol;
             appState.activeProto = data.protocol;
@@ -6156,7 +6182,7 @@
 
           // Surface sleek GUI toast notifications and handle seamless running neon transition
           if (appState.status === "connected") {
-            const activeCard = document.querySelector(`.vpn-profile-card[data-profile-id="${appState.activeProfileId}"]`);
+            const activeCard = document.querySelector(`.vpn-profile-card[data-profile-id="${activeProfId}"]`);
             if (activeCard && (activeCard.classList.contains("tunnel-connecting") || activeCard.classList.contains("active-connecting"))) {
               // 1. Seamless in-flight color switch to Emerald (animation does NOT restart from 0°!)
               activeCard.classList.remove("active-connecting");
@@ -6189,11 +6215,11 @@
                 if (badge) {
                   badge.textContent = "● Подключено";
                 }
-                renderProfiles(appState.profiles, appState.activeProfileId);
+                renderProfiles(appState.profiles, activeProfId);
               }, remaining);
             } else {
-              renderProfiles(appState.profiles, appState.activeProfileId);
-              const card = document.querySelector(`.vpn-profile-card[data-profile-id="${appState.activeProfileId}"]`);
+              renderProfiles(appState.profiles, activeProfId);
+              const card = document.querySelector(`.vpn-profile-card[data-profile-id="${activeProfId}"]`);
               if (card) {
                 card.classList.add("active-connected", "card-neon-ignited-emerald");
               }
@@ -6205,7 +6231,7 @@
             }
           } else {
             clearTimeout(connectingFinishTimeout);
-            renderProfiles(appState.profiles, appState.activeProfileId);
+            renderProfiles(appState.profiles, activeProfId);
 
             if (appState.status === "disconnected") {
               // Only show disconnect toast if transitioning from an active or connecting session
@@ -6522,6 +6548,13 @@
       callGo("openUrl", { url: url });
     }
     window.openAuthorProfile = openAuthorProfile;
+
+    function openProjectRepo() {
+      const url = "https://github.com/Phoenix1302/BobrDobr";
+      showToast("Открытие репозитория проекта на GitHub...", "info", 2000, null, null, "info");
+      callGo("openUrl", { url: url });
+    }
+    window.openProjectRepo = openProjectRepo;
 
     document.getElementById("btn-start-update").onclick = () => {
       document.getElementById("update-progress-block").style.display = "flex";

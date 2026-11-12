@@ -615,11 +615,16 @@ func main() {
 			}
 
 			if stateChanged {
+				tunnelMu.Lock()
+				curProfID := activeProfileID
+				tunnelMu.Unlock()
+
 				ui.Emit("stateChange", map[string]interface{}{
-					"status":   strings.ToLower(string(ev.State)),
-					"message":  ev.Message,
-					"protocol": curProto,
-					"adapter":  curAdapter,
+					"status":    strings.ToLower(string(ev.State)),
+					"message":   ev.Message,
+					"protocol":  curProto,
+					"adapter":   curAdapter,
+					"profileId": curProfID,
 				})
 			}
 		}
@@ -740,10 +745,11 @@ func main() {
 			ui.Log(fmt.Sprintf("Запуск гидротурбины для профиля '%s' [%s] через адаптер %s...", p.Name, p.Protocol, currentAdapter), "БОБР")
 
 			ui.Emit("stateChange", map[string]interface{}{
-				"status":   "connecting",
-				"message":  fmt.Sprintf("Подключение к %s...", p.Server),
-				"protocol": p.Protocol,
-				"adapter":  currentAdapter,
+				"status":    "connecting",
+				"message":   fmt.Sprintf("Подключение к %s...", p.Server),
+				"protocol":  p.Protocol,
+				"adapter":   currentAdapter,
+				"profileId": p.ID,
 			})
 
 			ctx := context.Background()
@@ -767,10 +773,11 @@ func main() {
 				if err := openconnectSup.Start(ctx, cfg); err != nil {
 					ui.Log(fmt.Sprintf("Ошибка запуска OpenConnect: %v", err), "ПРОТЕЧКА")
 					ui.Emit("stateChange", map[string]interface{}{
-						"status":   "error",
-						"message":  err.Error(),
-						"protocol": p.Protocol,
-						"adapter":  currentAdapter,
+						"status":    "error",
+						"message":   err.Error(),
+						"protocol":  p.Protocol,
+						"adapter":   currentAdapter,
+						"profileId": p.ID,
 					})
 				}
 			} else if p.AmneziaConfig != nil || p.RawConfig != "" {
@@ -812,19 +819,21 @@ func main() {
 				if err := amneziaSup.Start(ctx, cfg); err != nil {
 					ui.Log(fmt.Sprintf("Ошибка запуска AmneziaWG: %v", err), "ПРОТЕЧКА")
 					ui.Emit("stateChange", map[string]interface{}{
-						"status":   "error",
-						"message":  err.Error(),
-						"protocol": p.Protocol,
-						"adapter":  currentAdapter,
+						"status":    "error",
+						"message":   err.Error(),
+						"protocol":  p.Protocol,
+						"adapter":   currentAdapter,
+						"profileId": p.ID,
 					})
 				}
 			} else {
 				ui.Log("Некорректная конфигурация профиля", "ПРОТЕЧКА")
 				ui.Emit("stateChange", map[string]interface{}{
-					"status":   "error",
-					"message":  "Некорректная конфигурация профиля",
-					"protocol": p.Protocol,
-					"adapter":  currentAdapter,
+					"status":    "error",
+					"message":   "Некорректная конфигурация профиля",
+					"protocol":  p.Protocol,
+					"adapter":   currentAdapter,
+					"profileId": p.ID,
 				})
 			}
 		}()
@@ -898,8 +907,9 @@ func main() {
 			}
 			ui.Log(disconnectMsg, "ОШИБКА")
 			ui.Emit("stateChange", map[string]interface{}{
-				"status":  "disconnected",
-				"message": disconnectMsg,
+				"status":    "disconnected",
+				"message":   disconnectMsg,
+				"profileId": curActiveID,
 			})
 		}
 
@@ -1247,7 +1257,7 @@ func main() {
 		}
 		if err := json.Unmarshal(payload, &req); err == nil && req.ID != "" {
 			tunnelMu.Lock()
-			running := isRunning
+			running := isRunning || amneziaSup.IsRunning() || openconnectSup.IsRunning()
 			currentID := activeProfileID
 			tunnelMu.Unlock()
 
@@ -1268,8 +1278,9 @@ func main() {
 						systemTray.ShowNotification("БобрДобр VPN - Подключение заблокировано", blockReason)
 					}
 					ui.Emit("stateChange", map[string]interface{}{
-						"status":  "disconnected",
-						"message": blockReason,
+						"status":    "disconnected",
+						"message":   blockReason,
+						"profileId": req.ID,
 					})
 					return
 				}
@@ -1285,13 +1296,19 @@ func main() {
 			ID string `json:"id"`
 		}
 		if err := json.Unmarshal(payload, &req); err == nil && req.ID != "" {
-			settings, _ := store.GetSettings()
-			settings.ActiveProfileID = req.ID
-			_ = store.SaveSettings(settings)
+			tunnelMu.Lock()
+			running := isRunning || amneziaSup.IsRunning() || openconnectSup.IsRunning()
+			tunnelMu.Unlock()
+			if !running {
+				settings, _ := store.GetSettings()
+				settings.ActiveProfileID = req.ID
+				_ = store.SaveSettings(settings)
+			}
 			profiles, _ := store.ListProfiles()
+			settings, _ := store.GetSettings()
 			ui.Emit("profilesUpdated", map[string]interface{}{
 				"profiles":        profiles,
-				"activeProfileId": req.ID,
+				"activeProfileId": settings.ActiveProfileID,
 			})
 		}
 	})
