@@ -605,3 +605,116 @@ func TestSettings_SilentTray(t *testing.T) {
 		t.Fatalf("expected non-empty json")
 	}
 }
+
+func TestSaveSubscriptionProfile_PreservesBypass(t *testing.T) {
+	tempDir := t.TempDir()
+	storePath := filepath.Join(tempDir, "settings.json")
+	store, err := NewStore(storePath)
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	key := testWGKey()
+	subProf := Profile{
+		ID:             "sub-1",
+		Name:           "NL-Amsterdam",
+		Protocol:       ProtocolAmneziaWG,
+		Server:         "nl.example.com",
+		Port:           51820,
+		IsSubscription: true,
+		SubID:          "sub-1",
+		AmneziaConfig: &AmneziaWGConfig{
+			Address:    "10.0.0.2/32",
+			PrivateKey: key,
+			PublicKey:  key,
+		},
+	}
+
+	// 1. Initial subscription save
+	if err := store.SaveSubscriptionProfile(subProf); err != nil {
+		t.Fatalf("failed to save initial sub profile: %v", err)
+	}
+
+	// 2. User edits profile in GUI, adding bypass domains & split tunnel
+	userEdited, err := store.GetProfile("sub-1")
+	if err != nil {
+		t.Fatalf("failed to get profile: %v", err)
+	}
+	userEdited.BypassDomains = []string{"kinopoisk.ru", "gosuslugi.ru", "192.168.1.0/24"}
+	userEdited.SplitTunnel = true
+	if err := store.SaveProfile(userEdited); err != nil {
+		t.Fatalf("failed to save user-edited profile: %v", err)
+	}
+
+	// Verify user changes took effect
+	saved, _ := store.GetProfile("sub-1")
+	if len(saved.BypassDomains) != 3 || !saved.SplitTunnel {
+		t.Fatalf("expected 3 bypass domains and split_tunnel=true, got %+v", saved)
+	}
+
+	// 3. Next startup: subscription provider sends fresh profile (without bypass domains)
+	freshServerProf := Profile{
+		ID:             "sub-1",
+		Name:           "NL-Amsterdam",
+		Protocol:       ProtocolAmneziaWG,
+		Server:         "nl.example.com",
+		Port:           51820,
+		IsSubscription: true,
+		SubID:          "sub-1",
+		AmneziaConfig: &AmneziaWGConfig{
+			Address:    "10.0.0.2/32",
+			PrivateKey: key,
+			PublicKey:  key,
+		},
+	}
+	if err := store.SaveSubscriptionProfile(freshServerProf); err != nil {
+		t.Fatalf("failed to save refreshed sub profile: %v", err)
+	}
+
+	// 4. Verify user-defined bypass domains & split tunnel are STILL PRESERVED!
+	afterSync, _ := store.GetProfile("sub-1")
+	if len(afterSync.BypassDomains) != 3 || !afterSync.SplitTunnel {
+		t.Fatalf("expected preserved bypass domains and split_tunnel, got %+v", afterSync)
+	}
+	if afterSync.BypassDomains[0] != "kinopoisk.ru" || afterSync.BypassDomains[1] != "gosuslugi.ru" {
+		t.Fatalf("unexpected bypass domains content: %+v", afterSync.BypassDomains)
+	}
+}
+
+func TestMigrateLegacyConfig_BypassDomains(t *testing.T) {
+	tempDir := t.TempDir()
+	legacyPath := filepath.Join(tempDir, "legacy_bypass.json")
+	legacyData := []byte(`{
+		"active_profile_id": "legacy-sub",
+		"profiles": [
+			{
+				"id": "legacy-sub",
+				"name": "Legacy Sub",
+				"proto": "amneziawg",
+				"server": "legacy.vpn.org",
+				"port": 51820,
+				"config_content": "[Interface]\nPrivateKey = aaaa\nAddress = 10.0.0.2/32",
+				"split_tunnel": true,
+				"bypass_domains": ["mysite.org", "internal.net"]
+			}
+		]
+	}`)
+	if err := os.WriteFile(legacyPath, legacyData, 0600); err != nil {
+		t.Fatalf("failed writing legacy test file: %v", err)
+	}
+
+	store, err := NewStore(legacyPath)
+	if err != nil {
+		t.Fatalf("failed to open store with legacy data: %v", err)
+	}
+	profs, _ := store.ListProfiles()
+	if len(profs) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(profs))
+	}
+	if !profs[0].SplitTunnel || len(profs[0].BypassDomains) != 2 {
+		t.Fatalf("expected split_tunnel=true and 2 bypass domains, got %+v", profs[0])
+	}
+	if profs[0].BypassDomains[0] != "mysite.org" || profs[0].BypassDomains[1] != "internal.net" {
+		t.Fatalf("unexpected domains: %+v", profs[0].BypassDomains)
+	}
+}

@@ -4751,7 +4751,13 @@
       const editBypassEl = document.getElementById("edit-bypass-domains");
 
       if (editBypassEl) {
-        editBypassEl.value = (p.bypass_domains && Array.isArray(p.bypass_domains)) ? p.bypass_domains.join("\n") : "";
+        if (Array.isArray(p.bypass_domains)) {
+          editBypassEl.value = p.bypass_domains.join("\n");
+        } else if (typeof p.bypass_domains === "string") {
+          editBypassEl.value = p.bypass_domains;
+        } else {
+          editBypassEl.value = "";
+        }
       }
 
       if (p.protocol === "openconnect") {

@@ -163,6 +163,61 @@ func (s *Store) SaveProfile(profile Profile) error {
 	return s.persistLocked()
 }
 
+// SaveSubscriptionProfile creates or updates a profile fetched from a remote subscription provider.
+// If a matching profile already exists in the store, any client-side user routing configurations
+// (such as BypassDomains and SplitTunnel) are preserved rather than wiped out by the provider's payload.
+func (s *Store) SaveSubscriptionProfile(profile Profile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	foundIdx := -1
+	for i, p := range s.state.Profiles {
+		if p.ID == profile.ID || (profile.SubID != "" && p.SubID == profile.SubID) ||
+			(profile.IsSubscription && p.IsSubscription && profile.Name != "" && p.Name == profile.Name) {
+			foundIdx = i
+			break
+		}
+	}
+
+	if foundIdx >= 0 {
+		existing := s.state.Profiles[foundIdx]
+		// Retain existing client routing configurations if not provided by server
+		if len(profile.BypassDomains) == 0 && len(existing.BypassDomains) > 0 {
+			profile.BypassDomains = make([]string, len(existing.BypassDomains))
+			copy(profile.BypassDomains, existing.BypassDomains)
+			profile.SplitTunnel = existing.SplitTunnel
+		} else if existing.SplitTunnel {
+			profile.SplitTunnel = true
+		}
+		// Preserve profile ID to avoid duplicate entries with new UUIDs
+		if profile.ID == "" || profile.ID != existing.ID {
+			profile.ID = existing.ID
+		}
+		if profile.CreatedAt.IsZero() {
+			profile.CreatedAt = existing.CreatedAt
+		}
+	}
+
+	if profile.ID == "" {
+		profile.ID = generateUUID()
+	}
+	if profile.CreatedAt.IsZero() {
+		profile.CreatedAt = time.Now().UTC()
+	}
+
+	if err := profile.Validate(); err != nil {
+		return fmt.Errorf("invalid profile: %w", err)
+	}
+
+	if foundIdx >= 0 {
+		s.state.Profiles[foundIdx] = profile
+	} else {
+		s.state.Profiles = append(s.state.Profiles, profile)
+	}
+
+	return s.persistLocked()
+}
+
 // DeleteProfile removes a profile by ID and atomically persists to disk.
 func (s *Store) DeleteProfile(id string) error {
 	s.mu.Lock()
@@ -343,6 +398,17 @@ func migrateLegacyConfig(raw map[string]interface{}) *StoreState {
 
 		isSub, _ := pMap["is_subscription"].(bool)
 		p.IsSubscription = isSub
+
+		if isSplit, ok := pMap["split_tunnel"].(bool); ok {
+			p.SplitTunnel = isSplit
+		}
+		if domainsRaw, ok := pMap["bypass_domains"].([]interface{}); ok {
+			for _, d := range domainsRaw {
+				if ds, ok := d.(string); ok && ds != "" {
+					p.BypassDomains = append(p.BypassDomains, ds)
+				}
+			}
+		}
 
 		if proto == "openconnect" {
 			p.Protocol = ProtocolOpenConnect

@@ -1151,7 +1151,7 @@ func main() {
 				}
 
 				for _, p := range info.Profiles {
-					_ = store.SaveProfile(p)
+					_ = store.SaveSubscriptionProfile(p)
 				}
 				handleSubscriptionStateChange(&st, "active", nil, info)
 
@@ -1480,7 +1480,7 @@ func main() {
 			}
 
 			for _, p := range info.Profiles {
-				_ = store.SaveProfile(p)
+				_ = store.SaveSubscriptionProfile(p)
 			}
 			handleSubscriptionStateChange(&st, "active", nil, info)
 			ui.Log(fmt.Sprintf("Подписка обновлена: загружено %d профилей", len(info.Profiles)), "ПЛОТИНА")
