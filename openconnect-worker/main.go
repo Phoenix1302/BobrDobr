@@ -40,7 +40,7 @@ func main() {
 		logPathFlag       string
 	)
 
-	flag.StringVar(&serverFlag, "server", "", "VPN server host or URL (e.g. bobr.netphoenix.ru, https://bobr.netphoenix.ru:443/?kurwa)")
+	flag.StringVar(&serverFlag, "server", "", "VPN server host or URL (e.g. vpn.example.com, https://vpn.example.com:443/?secret=example)")
 	flag.StringVar(&serverFlag, "s", "", "VPN server (shorthand)")
 
 	flag.StringVar(&userFlag, "username", "", "VPN user name")
@@ -56,7 +56,7 @@ func main() {
 	flag.StringVar(&groupFlag, "group", "", "VPN user group (alias)")
 	flag.StringVar(&groupFlag, "g", "", "VPN user group (shorthand)")
 
-	flag.StringVar(&secretFlag, "secret", "", "Camouflage secret token (e.g. kurwa)")
+	flag.StringVar(&secretFlag, "secret", "", "Camouflage secret token (e.g. secret)")
 	flag.StringVar(&secretFlag, "key", "", "Camouflage secret token (alias)")
 	flag.StringVar(&secretFlag, "k", "", "Camouflage secret token (shorthand)")
 
@@ -85,7 +85,7 @@ func main() {
 
 	if targetServer == "" {
 		fmt.Fprintf(os.Stderr, "Usage: openconnect-worker.exe [flags] <server>\n")
-		fmt.Fprintf(os.Stderr, "Example: openconnect-worker.exe --passwd-on-stdin --user egor -k kurwa bobr.netphoenix.ru:443\n")
+		fmt.Fprintf(os.Stderr, "Example: openconnect-worker.exe --passwd-on-stdin --user user -k secret vpn.example.com:443\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}

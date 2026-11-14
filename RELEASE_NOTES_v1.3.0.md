@@ -19,7 +19,7 @@
 
 1. **Pure-Go OpenConnect CSTP/DTLS Worker**:
    - Полный отказ от внешнего бинарника `openconnect.exe` на C и 18 сопутствующих MinGW DLL (`libgnutls`, `libgmp`, `libxml2`, `zlib` и др.).
-   - Разработан и интегрирован легковесный нативный воркер `openconnect-worker.exe` на чистом Go с поддержкой протокола CSTP, Wintun и маскировки User-Agent/URL camo (`?kurwa`).
+   - Разработан и интегрирован легковесный нативный воркер `openconnect-worker.exe` на чистом Go с поддержкой протокола CSTP, Wintun и маскировки User-Agent/URL camo (например, `?secret=...`).
    - Изоляция процессов через Windows Job Object с гарантированным завершением дочерних процессов при выходе.
 
 2. **Приоритет серверной валидации подписки (Server-First Priority)**:
