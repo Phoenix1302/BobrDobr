@@ -3,14 +3,14 @@ package vpn
 import (
 	"bufio"
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
+	tls "github.com/refraction-networking/utls"
 	"openconnect-worker/auth"
 	"openconnect-worker/base"
 	"openconnect-worker/session"
@@ -71,10 +71,9 @@ func SetupTunnel() error {
 		if auth.Conn != nil {
 			_ = auth.Conn.Close()
 		}
-		config := tls.Config{
-			InsecureSkipVerify: base.Cfg.InsecureSkipVerify,
-		}
-		auth.Conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp4", auth.Prof.HostWithPort, &config)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		auth.Conn, err = utils.DialBrowserTLS(ctx, auth.Prof.HostWithPort, auth.Prof.Host, base.Cfg.InsecureSkipVerify)
 		if err != nil {
 			return fmt.Errorf("failed to connect for CSTP tunnel: %w", err)
 		}

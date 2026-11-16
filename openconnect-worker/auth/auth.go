@@ -3,12 +3,11 @@ package auth
 import (
 	"bufio"
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-sysinfo"
+	tls "github.com/refraction-networking/utls"
 	"openconnect-worker/base"
 	"openconnect-worker/proto"
 	"openconnect-worker/session"
@@ -24,7 +24,7 @@ import (
 
 var (
 	Prof         = &Profile{Initialized: false}
-	Conn         *tls.Conn // tls.Conn 是结构体，net.Conn 是接口，所以这里可以用指针类型
+	Conn         *tls.UConn
 	BufR         *bufio.Reader
 	reqHeaders   = make(map[string]string)
 	WebVpnCookie string
@@ -85,16 +85,16 @@ func init() {
 // InitAuth 确定用户组和服务端认证地址 AuthPath
 func InitAuth() error {
 	WebVpnCookie = ""
-	config := tls.Config{
-		InsecureSkipVerify: base.Cfg.InsecureSkipVerify,
-	}
 	base.Info("Attempting to connect to server:", Prof.HostWithPort)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var err error
-	Conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp4", Prof.HostWithPort, &config)
+	Conn, err = utils.DialBrowserTLS(ctx, Prof.HostWithPort, Prof.Host, base.Cfg.InsecureSkipVerify)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	base.Info("Connected to HTTPS on", Prof.HostWithPort)
+	base.Info("Connected to HTTPS on", Prof.HostWithPort, "(uTLS Chrome Fingerprint, ALPN: http/1.1)")
 	BufR = bufio.NewReader(Conn)
 	// base.Info(Conn.ConnectionState().Version)
 

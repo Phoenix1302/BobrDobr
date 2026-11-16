@@ -13,10 +13,13 @@ require (
 )
 
 require (
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/elastic/go-windows v1.0.2 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v4 v4.0.2 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/refraction-networking/utls v1.8.2 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
 )

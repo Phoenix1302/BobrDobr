@@ -26,7 +26,7 @@ var (
 
 const (
 	DefaultGitHubRepo = "Phoenix1302/BobrDobr"
-	UserAgent         = "BobrDobr-Updater/1.3.1"
+	UserAgent         = "BobrDobr-Updater/1.3.2"
 )
 
 // ReleaseInfo holds metadata for a published application release.

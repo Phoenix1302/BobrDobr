@@ -2707,7 +2707,7 @@
           <div class="brand-text-col">
             <div class="brand-title-row">
               <span class="brand-name">БобрДобр VPN</span>
-              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.3.1</span>
+              <span class="version-badge" id="app-ver-badge" title="Нажмите для проверки обновлений">v1.3.2</span>
               <span class="update-badge" id="app-update-badge" style="display:none;" onclick="openModal('update-modal')">🚀 Обновление</span>
             </div>
           </div>
@@ -2787,7 +2787,7 @@
       </div>
       <div class="logs-content" id="logs-console">
         <div class="log-row" data-tag="БОБР">
-          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема БобрДобр VPN v1.3.1 готова к работе.
+          <span class="log-time">00:00:00</span> <span class="tag-bobr">[БОБР]</span> Гидросистема БобрДобр VPN v1.3.2 готова к работе.
         </div>
       </div>
       <div class="logs-empty-state" id="logs-empty-filter" style="display:none;">
@@ -3485,7 +3485,7 @@
         <div class="sub-section-card" style="padding: 14px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
             <div style="font-weight:700; color:#fff; font-size:13px;" id="update-release-title">Список изменений</div>
-            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.3.1</span>
+            <span style="font-size:11px; color:#38bdf8; background:rgba(6,182,212,0.15); padding:2px 8px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);" id="update-release-tag">v1.3.2</span>
           </div>
           <div id="update-release-desc" style="white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 12px; color: #cbd5e1; max-height: 220px; overflow-y: auto; background: rgba(10, 15, 20, 0.4); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);">Описание изменений...</div>
         </div>
@@ -3614,7 +3614,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size:11.5px; color:#fff; font-weight:700;">Версия программы:</div>
-              <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.1 (Go Native Engine)</div>
+              <div style="font-size:11px; color:var(--text-muted);">БобрДобр VPN v1.3.2 (Go Native Engine)</div>
             </div>
             <button class="btn btn-xs" onclick="showToast('Проверка обновлений на сервере...', 'info', 2000, null, null, 'update'); callGo('checkUpdate')">🔄 Проверить обновления</button>
           </div>
@@ -6455,7 +6455,7 @@
             if (data.error) {
               showToast(`Ошибка проверки обновлений: ${data.error}`, "error", 5000, null, null, "update");
             } else {
-              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.3.1";
+              const ver = data.latest ? (data.latest.startsWith("v") ? data.latest : "v" + data.latest) : "v1.3.2";
               showToast(`У вас установлена актуальная версия БобрДобр VPN (${ver})`, "success", 4000, null, null, "update");
             }
           }
@@ -6463,14 +6463,14 @@
 
         case "ready": {
           const appVerEl = document.getElementById("app-ver-badge");
-          if (appVerEl) appVerEl.textContent = "v1.3.1";
+          if (appVerEl) appVerEl.textContent = "v1.3.2";
           break;
         }
 
         case "settingsLoaded":
           {
             const appVerEl = document.getElementById("app-ver-badge");
-            if (appVerEl) appVerEl.textContent = "v1.3.1";
+            if (appVerEl) appVerEl.textContent = "v1.3.2";
           }
           if (data) {
             appState.settings = data;
@@ -6608,7 +6608,7 @@
       if (typeof window.nativeBridgeCall === "function") {
         bridgeReady = true;
         const appVerEl = document.getElementById("app-ver-badge");
-        if (appVerEl) appVerEl.textContent = "v1.3.1";
+        if (appVerEl) appVerEl.textContent = "v1.3.2";
         callGo("ready");
       } else {
         setTimeout(initBridge, 60);

@@ -217,7 +217,7 @@ func main() {
 
 	// 0. Initialize robust persistent file logging with automatic rotation and safe stdout fallback
 	appDir := getAppDataDir()
-	logWriter, err := logger.Setup(appDir, "1.3.1")
+	logWriter, err := logger.Setup(appDir, "1.3.2")
 	if err == nil {
 		defer logWriter.Close()
 	}
@@ -296,7 +296,7 @@ func main() {
 		log.Printf("[ВНИМАНИЕ] Не удалось автоматически повысить привилегии: продолжение работы")
 	}
 
-	log.Println("[БОБР] Запуск БобрДобр VPN v1.3.1 (Go Native Engine)...")
+	log.Println("[БОБР] Запуск БобрДобр VPN v1.3.2 (Go Native Engine)...")
 
 	// 2. Initialize encrypted configuration store
 	store, err := config.NewStore(configPath)
@@ -1848,7 +1848,7 @@ func main() {
 		}
 	})
 
-	currentAppVersion := "1.3.1"
+	currentAppVersion := "1.3.2"
 
 	ui.On("checkUpdate", func(payload json.RawMessage) {
 		ui.Log("Проверка обновлений на сервере...", "БОБР")

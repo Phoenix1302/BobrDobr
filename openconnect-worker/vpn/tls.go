@@ -2,8 +2,8 @@ package vpn
 
 import (
 	"bufio"
-	"crypto/tls"
 	"encoding/binary"
+	"net"
 	"net/http"
 	"time"
 
@@ -13,7 +13,7 @@ import (
 )
 
 // 复用已有的 tls.Conn 和对应的 bufR
-func tlsChannel(conn *tls.Conn, bufR *bufio.Reader, cSess *session.ConnSession, resp *http.Response) {
+func tlsChannel(conn net.Conn, bufR *bufio.Reader, cSess *session.ConnSession, resp *http.Response) {
 	defer func() {
 		base.Info("tls channel exit")
 		resp.Body.Close()
@@ -80,7 +80,7 @@ func tlsChannel(conn *tls.Conn, bufR *bufio.Reader, cSess *session.ConnSession, 
 }
 
 // payloadOutTLSToServer Step 4
-func payloadOutTLSToServer(conn *tls.Conn, cSess *session.ConnSession) {
+func payloadOutTLSToServer(conn net.Conn, cSess *session.ConnSession) {
 	defer func() {
 		base.Info("tls payloadOut to server exit")
 		cSess.SendBye(conn)

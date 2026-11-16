@@ -1,6 +1,6 @@
-# БобрДобр VPN (BobrDobr VPN) v1.3.1
+# БобрДобр VPN (BobrDobr VPN) v1.3.2
 
-[![Release](https://img.shields.io/badge/release-v1.3.1-amber.svg)](https://github.com/Phoenix1302/BobrDobr/releases/tag/v1.3.1)
+[![Release](https://img.shields.io/badge/release-v1.3.2-amber.svg)](https://github.com/Phoenix1302/BobrDobr/releases/tag/v1.3.2)
 [![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go)](https://golang.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(x64)-0078D6.svg?logo=windows)](https://microsoft.com)
 [![Installer](https://img.shields.io/badge/Installer-Inno%20Setup%206-blue.svg)](https://jrsoftware.org/isinfo.php)
@@ -15,7 +15,7 @@
 
 ---
 
-## ⚡ Ключевые возможности и архитектура v1.3.1
+## ⚡ Ключевые возможности и архитектура v1.3.2
 
 ### 1. Pure Go 1.24 Native Core & Windows Service Management
 - **100% Go**: ядро клиента скомпилировано в единый статический бинарник без сторонних интерпретаторов и рантайм-скриптов.
@@ -26,13 +26,15 @@
 ### 2. Киберпанк GUI на базе встроенного Microsoft Edge WebView2
 - **Аппаратная неоновая анимация («Бегущая лента»)**: динамический световой луч на GPU (`conic-gradient` + CSS `@property`) с бесшовным переходом цвета из янтарного в изумрудно-зелёный при установлении связи.
 - **Бесшовное быстрое переключение серверов (Fast-Switching)**: независимое отслеживание реально подключенного туннеля (`connectedProfileId`). Свободное и плавное переключение между серверами по кнопке «Подключить» без визуальных рассинхронизаций.
+- **Раздельное туннелирование и исключения маршрутизации**: надёжное сохранение пользовательских правил обхода туннеля (`Bypass Domains` и `Split Tunneling`), устойчивое к перезапускам приложения и фоновым синхронизациям подписки.
 - **Встроенные модальные окна и подтверждения**: диалоги с эффектом `backdrop-filter: blur(8px)`, акцентным свечением и поддержкой клавиатуры (`Enter` / `Escape`).
 - **Раздел «Авторство и разработка»**: быстрый доступ к официальному репозиторию проекта и профилю автора на GitHub прямо из настроек.
 
-### 3. Pure-Go OpenConnect Worker (CSTP / DTLS)
+### 3. Pure-Go OpenConnect Worker с uTLS маскировкой (Анти-DPI)
+- **uTLS Chrome Fingerprint**: интеграция библиотеки uTLS с полноценной эмуляцией TLS-рукопожатия браузера Google Chrome на Windows (полный набор GREASE, идентичный порядок Cipher Suites, кривые X25519) и принудительным ALPN `http/1.1`, скрывающим сигнатуры Go-клиента от DPI/ТСПУ и обеспечивающим полную совместимость с протоколом AnyConnect/CSTP.
 - **100% Self-Contained**: собственная реализация протокола Cisco AnyConnect / OpenConnect CSTP на чистом Go.
 - **Отказ от MinGW DLL**: удалены 18 тяжелых сторонних динамических библиотек (`libgnutls`, `libgmp`, `libxml2`, `zlib` и др.).
-- **URL & User-Agent Camouflage**: поддержка маскировки параметров запроса (например, кастомные токены вида `?secret=...`) и эмуляции легитимных клиентов.
+- **URL & Camouflage**: поддержка камуфляжа параметров запроса (кастомные секретные токены `?secret=...`) и защита от активного зондирования.
 - **Встроенный Wintun драйвер**: прямое взаимодействие с виртуальным сетевым адаптером Wintun.
 
 ### 4. AmneziaWG Tunneling
@@ -68,12 +70,12 @@ VPN_Windows_Client/
 │   ├── scripts/                     # Скрипты сборки и подписи (Build-Installer.ps1)
 │   └── vendor/                      # Вендоринг зависимостей Go
 ├── dist/                            # Готовые собранные дистрибутивы
-│   ├── installer/                   # BobrDobr-Setup-v1.3.1.exe, BobrDobr-Setup.exe
+│   ├── installer/                   # BobrDobr-Setup-v1.3.2.exe, BobrDobr-Setup.exe
 │   └── windows/                     # BobrDobr.exe
 ├── openconnect-worker/              # Исходный код Pure-Go воркера OpenConnect
 ├── build-go.ps1                     # Локальный скрипт сборки Go-клиента
 ├── build-openconnect-worker.ps1     # Локальный скрипт сборки OpenConnect воркера
-├── RELEASE_NOTES_v1.3.1.md          # Примечания к релизу v1.3.1
+├── RELEASE_NOTES_v1.3.2.md          # Примечания к релизу v1.3.2
 └── README.md                        # Документация проекта
 ```
 
@@ -95,10 +97,10 @@ VPN_Windows_Client/
 .\build-openconnect-worker.ps1
 
 # 2. Сборка основного Go клиента и инсталлятора
-.\build-go.ps1 -Version "1.3.1"
+.\build-go.ps1 -Version "1.3.2"
 ```
 
-Собранные бинарники и подписанный установщик будут сохранены в каталоге `dist/installer/BobrDobr-Setup-v1.3.1.exe` и `dist/windows/BobrDobr.exe`.
+Собранные бинарники и подписанный установщик будут сохранены в каталоге `dist/installer/BobrDobr-Setup-v1.3.2.exe` и `dist/windows/BobrDobr.exe`.
 
 ---
 

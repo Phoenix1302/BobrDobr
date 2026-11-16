@@ -1,9 +1,9 @@
 package session
 
 import (
-	"crypto/tls"
 	"encoding/binary"
 	"encoding/xml"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -236,7 +236,7 @@ func (cSess *ConnSession) Close() {
 }
 
 // SendBye sends the Cisco AnyConnect CSTP DISCONNECT (0x05) BYE packet to the server
-func (cSess *ConnSession) SendBye(conn *tls.Conn) {
+func (cSess *ConnSession) SendBye(conn net.Conn) {
 	if conn == nil {
 		return
 	}
